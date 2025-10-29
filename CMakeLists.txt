@@ -37,19 +37,36 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# Add retarget.c to redirect printf output
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/retarget.c
+)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
+# Add VL53L0X sources
+set(VL53L0X_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/src/vl53l0x_api.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/src/vl53l0x_api_calibration.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/src/vl53l0x_api_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/src/vl53l0x_api_ranging.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/src/vl53l0x_api_strings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/platform/src/vl53l0x_platform.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/platform/src/vl53l0x_i2c_platform.c
+)
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
+    ${VL53L0X_SRCS}
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/core/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/VL53L0X/platform/inc
 )
 
 # Add project symbols (macros)
