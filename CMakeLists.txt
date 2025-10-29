@@ -67,6 +67,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
 )
 
+
+
 # Try to find an objcopy for producing .bin/.hex after build
 if(NOT CMAKE_OBJCOPY)
     find_program(CMAKE_OBJCOPY arm-none-eabi-objcopy objcopy)

@@ -29,8 +29,9 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
-
+// #include <VL53L0X.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -119,13 +120,11 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument) {
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
-  int i = 0;
+  float t = 0.1;
   for (;;) {
-    i++;
-    char buf[20];
-    sprintf(buf, "Hello %d\r\n", i);
-    HAL_UART_Transmit(&huart2, buf, strlen(buf), 10);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    t+=0.01;
+    char buf[50];
+    vTaskDelay(100);
   }
   /* USER CODE END StartDefaultTask */
 }
