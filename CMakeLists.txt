@@ -40,6 +40,11 @@ add_subdirectory(cmake/stm32cubemx)
 # Add retarget.c to redirect printf output
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/retarget.c
+    # 用户添加: 电机与编码器处理逻辑
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/motor.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/pid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ina226.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/myiic.c
 )
 
 # Link directories setup

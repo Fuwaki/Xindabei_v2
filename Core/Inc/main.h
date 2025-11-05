@@ -57,6 +57,31 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define ADC_MEG_Pin GPIO_PIN_0
+#define ADC_MEG_GPIO_Port GPIOC
+#define PWM2_A_Pin GPIO_PIN_0
+#define PWM2_A_GPIO_Port GPIOA
+#define MOTOR_CUR_A_Pin GPIO_PIN_0
+#define MOTOR_CUR_A_GPIO_Port GPIOB
+#define MOTOR_CUR_B_Pin GPIO_PIN_1
+#define MOTOR_CUR_B_GPIO_Port GPIOB
+#define ENCODER2_B_Pin GPIO_PIN_6
+#define ENCODER2_B_GPIO_Port GPIOC
+#define ENCODER2_A_Pin GPIO_PIN_7
+#define ENCODER2_A_GPIO_Port GPIOC
+#define TOF_DRDY_Pin GPIO_PIN_15
+#define TOF_DRDY_GPIO_Port GPIOA
+#define TOF_DRDY_EXTI_IRQn EXTI15_10_IRQn
+#define PWM2_B_Pin GPIO_PIN_3
+#define PWM2_B_GPIO_Port GPIOB
+#define PWM1_B_Pin GPIO_PIN_6
+#define PWM1_B_GPIO_Port GPIOB
+#define PWM1_A_Pin GPIO_PIN_7
+#define PWM1_A_GPIO_Port GPIOB
+#define TOF_SCL_Pin GPIO_PIN_8
+#define TOF_SCL_GPIO_Port GPIOB
+#define TOF_SDA_Pin GPIO_PIN_9
+#define TOF_SDA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
