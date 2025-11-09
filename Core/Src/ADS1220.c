@@ -59,20 +59,29 @@
 //   
  ******************************************************************************/
 #include "ADS1220.h"
-/* This is MSP430 Code */
+
+static inline GPIO_PinState ADS1220_ReadDrdy(void)
+{
+	return HAL_GPIO_ReadPin(ADS1220_DRDY_GPIO_PORT, ADS1220_DRDY_PIN);
+}
+
+static inline int ADS1220_IsDrdyActive(void)
+{
+	return ADS1220_ReadDrdy() == ADS1220_DRDY_ACTIVE_STATE;
+}
+
+static inline int ADS1220_IsDrdyInactive(void)
+{
+	return !ADS1220_IsDrdyActive();
+}
+
+static inline int ADS1220_HasTimeoutExpired(uint32_t deadline)
+{
+	return ((int32_t)(deadline - HAL_GetTick()) <= 0);
+}
 void ADS1220Init(void)
 {
-	P3SEL |= ADS1220_DIN + ADS1220_DOUT ;
-	P2SEL |= ADS1220_SCLK;
-	P2SEL &= ~(ADS1220_DRDY | ADS1220_CS); 
-	/* define initial states */
-	P1OUT |=  (ADS1220_CS); 					/* CS is really 'not' CS, so it should be disabled high */
-	/* define inputs */
-	P2DIR &= ~(ADS1220_DRDY);					/* DRDY is an input to the micro */
-	P2IES |= ADS1220_DRDY;						/* and should be used as an interrupt to retrieve data */
-	/* define outputs */
-	P1DIR |= ADS1220_CS;
-   return;
+    ADS1220AssertCS(0);
 }
 
 /* ADS1220 Initial Configuration */
@@ -95,47 +104,66 @@ void ADS1220Config(void)
 /*  Polling Function */
 int ADS1220WaitForDataReady(int Timeout)
 {
-   if (Timeout > 0)
-   {
-      /* wait for /DRDY = 1 */
-      while (!(P2IN & ADS1220_DRDY) && (Timeout-- >= 0));
-      /* wait for /DRDY = 0 */
-      while ( (P2IN & ADS1220_DRDY) && (Timeout-- >= 0))         ;
-      if (Timeout < 0)
-         return 0; /* ADS1220_TIMEOUT_WARNING; */
-   }
-   else
-   {
-      /* wait for /DRDY = 1 */
-      while (!(P2IN & ADS1220_DRDY));
-      /* wait for /DRDY = 0 */
-      while ( (P2IN & ADS1220_DRDY));
-   }
-   return ADS1220_NO_ERROR;
+	if (Timeout > 0)
+	{
+		uint32_t deadline = HAL_GetTick() + (uint32_t)Timeout;
+
+		while (ADS1220_IsDrdyActive())
+		{
+			if (ADS1220_HasTimeoutExpired(deadline))
+			{
+				return 0;
+			}
+			__NOP();
+		}
+
+		while (ADS1220_IsDrdyInactive())
+		{
+			if (ADS1220_HasTimeoutExpired(deadline))
+			{
+				return 0;
+			}
+			__NOP();
+		}
+	}
+	else
+	{
+		while (ADS1220_IsDrdyActive())
+		{
+			__NOP();
+		}
+
+		while (ADS1220_IsDrdyInactive())
+		{
+			__NOP();
+		}
+	}
+
+	return ADS1220_NO_ERROR;
 }
 void ADS1220AssertCS( int fAssert)
 {
-   if (fAssert)
-		P1OUT &=  ~(ADS1220_CS); 
-   else
-		P1OUT |=  (ADS1220_CS); 
+	HAL_GPIO_WritePin(ADS1220_CS_GPIO_PORT, ADS1220_CS_PIN,
+					  fAssert ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 void ADS1220SendByte(unsigned char Byte)
-{	char dummy;
-	while(!(UCA0IFG&UCTXIFG));
-	UCA0TXBUF = Byte;		
-	while(!(UCA0IFG&UCRXIFG));
-	dummy = UCA0RXBUF;			
-   
+{
+	if (HAL_SPI_Transmit(ADS1220_SPI_HANDLE, &Byte, 1U, ADS1220_SPI_TIMEOUT) != HAL_OK)
+	{
+		Error_Handler();
+	}
 }
 unsigned char ADS1220ReceiveByte(void)
 {
-   unsigned char Result = 0;
-	while(!(UCA0IFG&UCTXIFG));	/* Make sure nothing is currently transmitting */
-	UCA0TXBUF = 0xff;		 	/* Send out NOP to initiate SCLK */
-	while(!(UCA0IFG&UCRXIFG));	/* Wait until all data is transmitted (received) */
-	Result = UCA0RXBUF;			/* Capture the receive buffer */
-	return Result;
+	uint8_t tx = 0xffU;
+	uint8_t rx = 0U;
+
+	if (HAL_SPI_TransmitReceive(ADS1220_SPI_HANDLE, &tx, &rx, 1U, ADS1220_SPI_TIMEOUT) != HAL_OK)
+	{
+		Error_Handler();
+	}
+
+	return rx;
 }
 /*
 ******************************************************************************
@@ -873,7 +901,7 @@ void set_IDAC(char c)
 void set_IMUX(char c, int i)
 {
 	int mux = (int) c - 48;
-	int dERROR;
+	int dERROR = ADS1220_NO_ERROR;
 	unsigned Temp;
 	/* the IDAC Mux value is only part of the register, so we have to read it back
 	   and massage the new value into it */

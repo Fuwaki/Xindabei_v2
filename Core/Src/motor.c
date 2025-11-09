@@ -21,20 +21,21 @@ int32_t motor_a_current_setpoint = 0;
 
 // 低通滤波器结构体
 typedef struct {
-    float alpha;
-    float filtered;
+  float alpha;
+  float filtered;
 } LowPassFilter;
 
 static LowPassFilter current_filter;
 
-
-
 void CurrentLoopTimerHandler() {
   // 应用低通滤波
-  float filtered_current = current_filter.alpha * (float)motor_a_current + (1.0f - current_filter.alpha) * current_filter.filtered;
+  float filtered_current =
+      current_filter.alpha * (float)motor_a_current +
+      (1.0f - current_filter.alpha) * current_filter.filtered;
   current_filter.filtered = filtered_current;
 
-  float output = PID_Update_Positional(&motor_pid, motor_a_current_setpoint, filtered_current);
+  float output = PID_Update_Positional(&motor_pid, motor_a_current_setpoint,
+                                       filtered_current);
   // printf("%d,%d\n", (int)(output), (int)filtered_current);
 
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1,

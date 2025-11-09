@@ -59,17 +59,45 @@
 //******************************************************************************/
 #ifndef ADS1220_H_
 #define ADS1220_H_
-/* Definition of GPIO Port Bits Used for Communication */
-/* P1.2 */
-#define ADS1220_CS      	0x04
-/* P3.3  */
-#define ADS1220_DIN     	0x08
-/* P3.4 */
-#define ADS1220_DOUT    	0x10
-/* P2.6 */
-#define ADS1220_DRDY    	0x40
-/* P2.7 */
-#define ADS1220_SCLK    	0x80
+
+#include "main.h"
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern SPI_HandleTypeDef hspi3;
+
+/* Definition of GPIO ports and pins used for communication */
+#ifndef ADS1220_CS_GPIO_PORT
+#define ADS1220_CS_GPIO_PORT    ADC_CS_GPIO_Port
+#endif
+
+#ifndef ADS1220_CS_PIN
+#define ADS1220_CS_PIN          ADC_CS_Pin
+#endif
+
+#ifndef ADS1220_DRDY_GPIO_PORT
+#define ADS1220_DRDY_GPIO_PORT  ADC_DRDY_GPIO_Port
+#endif
+
+#ifndef ADS1220_DRDY_PIN
+#define ADS1220_DRDY_PIN        ADC_DRDY_Pin
+#endif
+
+#ifndef ADS1220_SPI_HANDLE
+#define ADS1220_SPI_HANDLE      (&hspi3)
+#endif
+
+#ifndef ADS1220_SPI_TIMEOUT
+#define ADS1220_SPI_TIMEOUT     10U
+#endif
+
+#ifndef ADS1220_DRDY_ACTIVE_STATE
+#define ADS1220_DRDY_ACTIVE_STATE   GPIO_PIN_RESET
+#endif
 /* Error Return Values */
 #define ADS1220_NO_ERROR           0
 #define ADS1220_ERROR				-1
@@ -262,4 +290,9 @@ void set_IDAC(char c);
 void set_IMUX(char c, int i);
 void set_DRDYM(char c);
 void set_ERROR(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /*ADS1220_H_*/

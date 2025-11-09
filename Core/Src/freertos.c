@@ -19,17 +19,16 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
-#include "cmsis_os.h"
-#include "ina226.h"
-#include "main.h"
-#include "myiic.h"
 #include "task.h"
+#include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "common.h"
 #include "motor.h"
 #include "tim.h"
+#include "uart_command.h"
 #include "usart.h"
 #include "vl53l0x_api.h"
 #include <math.h>
@@ -65,34 +64,36 @@ TaskHandle_t ToFMeasureTaskHandle;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-    .name = "defaultTask",
-    .stack_size = 256 * 4,
-    .priority = (osPriority_t)osPriorityNormal,
+  .name = "defaultTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ToFMeasure */
 osThreadId_t ToFMeasureHandle;
 const osThreadAttr_t ToFMeasure_attributes = {
-    .name = "ToFMeasure",
-    .stack_size = 512 * 4,
-    .priority = (osPriority_t)osPriorityLow,
+  .name = "ToFMeasure",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for UartTask */
 osThreadId_t UartTaskHandle;
 const osThreadAttr_t UartTask_attributes = {
-    .name = "UartTask",
-    .stack_size = 512 * 4,
-    .priority = (osPriority_t)osPriorityLow,
+  .name = "UartTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for MotorSpeedTask */
 osThreadId_t MotorSpeedTaskHandle;
 const osThreadAttr_t MotorSpeedTask_attributes = {
-    .name = "MotorSpeedTask",
-    .stack_size = 256 * 4,
-    .priority = (osPriority_t)osPriorityLow,
+  .name = "MotorSpeedTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for uartQueue */
 osMessageQueueId_t uartQueueHandle;
-const osMessageQueueAttr_t uartQueue_attributes = {.name = "uartQueue"};
+const osMessageQueueAttr_t uartQueue_attributes = {
+  .name = "uartQueue"
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -107,10 +108,10 @@ void MotorSpeedTaskFunc(void *argument);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
- * @brief  FreeRTOS initialization
- * @param  None
- * @retval None
- */
+  * @brief  FreeRTOS initialization
+  * @param  None
+  * @retval None
+  */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
@@ -130,8 +131,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of uartQueue */
-  uartQueueHandle =
-      osMessageQueueNew(128, sizeof(uint16_t), &uartQueue_attributes);
+  uartQueueHandle = osMessageQueueNew (128, sizeof(uint16_t), &uartQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -139,8 +139,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  defaultTaskHandle =
-      osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* creation of ToFMeasure */
   ToFMeasureHandle = osThreadNew(StartTask02, NULL, &ToFMeasure_attributes);
@@ -149,8 +148,7 @@ void MX_FREERTOS_Init(void) {
   UartTaskHandle = osThreadNew(UartTaskFunc, NULL, &UartTask_attributes);
 
   /* creation of MotorSpeedTask */
-  MotorSpeedTaskHandle =
-      osThreadNew(MotorSpeedTaskFunc, NULL, &MotorSpeedTask_attributes);
+  MotorSpeedTaskHandle = osThreadNew(MotorSpeedTaskFunc, NULL, &MotorSpeedTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -159,6 +157,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
   /* USER CODE END RTOS_EVENTS */
+
 }
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -168,40 +167,15 @@ void MX_FREERTOS_Init(void) {
  * @retval None
  */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument) {
+void StartDefaultTask(void *argument)
+{
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
-  i2c_gpio_init();
-
-
-  bool ina_ready = ina226_init();
 
   for (;;) {
-    if (!ina_ready)
-    {
-      printf("INA226 init failed, retrying...\r\n");
-      ina_ready = ina226_init();
-      vTaskDelay(pdMS_TO_TICKS(500));
-      continue;
-    }
-
-    int32_t current_ua = 0;
-
-    bool ok_current = ina226_read_current_ua(&current_ua);
-
-    if (!ok_current)
-    {
-      printf("INA226 read error\r\n");
-      ina_ready = false;
-      vTaskDelay(pdMS_TO_TICKS(200));
-      continue;
-    }
-
-    // printf("Current: %ld\r\n", current_ua);
-    motor_a_current = current_ua;
-
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-    vTaskDelay(pdMS_TO_TICKS(5));
+    print_handler();
+    // HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   /* USER CODE END StartDefaultTask */
@@ -214,7 +188,8 @@ void StartDefaultTask(void *argument) {
  * @retval None
  */
 /* USER CODE END Header_StartTask02 */
-void StartTask02(void *argument) {
+void StartTask02(void *argument)
+{
   /* USER CODE BEGIN StartTask02 */
   uint8_t status;
   uint32_t refSpadCount;
@@ -380,13 +355,14 @@ init_done:
  * @retval None
  */
 /* USER CODE END Header_UartTaskFunc */
-void UartTaskFunc(void *argument) {
+void UartTaskFunc(void *argument)
+{
   /* USER CODE BEGIN UartTaskFunc */
   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_rx_buf, UART_BUF_LEN);
   uint16_t len;
   while (1) {
     if (osMessageQueueGet(uartQueueHandle, &len, NULL, osWaitForever) == osOK) {
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      handle_command(uart_rx_buf, len);
     }
   }
   /* USER CODE END UartTaskFunc */
@@ -399,7 +375,8 @@ void UartTaskFunc(void *argument) {
  * @retval None
  */
 /* USER CODE END Header_MotorSpeedTaskFunc */
-void MotorSpeedTaskFunc(void *argument) {
+void MotorSpeedTaskFunc(void *argument)
+{
   /* USER CODE BEGIN MotorSpeedTaskFunc */
   /* Infinite loop */
 
@@ -425,8 +402,8 @@ void MotorSpeedTaskFunc(void *argument) {
                                          speed); // 减小 setpoint
     motor_a_current_setpoint = (int32_t)(output * 6.0f);
 
-    printf("%ld,%d,%d,%d\n", Get_Encoder1_Count(), (int)speed, (int)output,
-           (int)(3000 + 1500 * sinf(omega)));
+    // printf("%ld,%d,%d,%d\n", Get_Encoder1_Count(), (int)speed, (int)output,
+    //        (int)(3000 + 1500 * sinf(omega)));
     vTaskDelayUntil(&xLast, freq);
   }
   /* USER CODE END MotorSpeedTaskFunc */
@@ -436,3 +413,4 @@ void MotorSpeedTaskFunc(void *argument) {
 /* USER CODE BEGIN Application */
 
 /* USER CODE END Application */
+
