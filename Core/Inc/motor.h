@@ -18,9 +18,15 @@ typedef struct {
 } EncPLL;
 float EncPLL_Update(EncPLL *pll, int32_t now_theta);
 void EncPLL_Init(EncPLL *pll, float kp, float ki, float dt);
-void CurrentLoopTimerHandler();
 void CurrentLoopInit();
 
+// 设置目标电机电流
+void SetTargetMotorSpeed(int32_t motor_1, int32_t motor_2);
 
-extern int32_t motor_a_current;
-extern int32_t motor_a_current_setpoint;
+// 电流环任务
+void CurrentLoopTimerHandler();
+
+// 速度环任务
+void SpeedLoopHandler();
+
+void MotorInit();

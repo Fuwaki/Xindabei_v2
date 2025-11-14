@@ -3,7 +3,6 @@
 #include "pid.h"
 #include "tim.h"
 #include <stdint.h>
-#include <stdio.h>
 
 // 使用差分法扩展编码器值：记录上一原始计数并根据差值调整扩展计数，避免依赖更新中断
 static int32_t encoder1_extended = 0;
@@ -14,40 +13,85 @@ static int32_t encoder2_extended = 0;
 static uint16_t encoder2_last_raw = 0;
 static uint8_t encoder2_inited = 0;
 
-static PIDController motor_pid;
+// 速度pid
+static PIDController motor1_speed_pid;
+static PIDController motor2_speed_pid;
 
-int32_t motor_a_current = 0;
-int32_t motor_a_current_setpoint = 0;
+// 电流pid
+static PIDController motor1_current_pid;
+static PIDController motor2_current_pid;
 
-// 低通滤波器结构体
-typedef struct {
-  float alpha;
-  float filtered;
-} LowPassFilter;
+// 测速pll
+static EncPLL motor1_pll;
+static EncPLL motor2_pll;
 
-static LowPassFilter current_filter;
+static int32_t motor_1_speed_setpoint = 0;
+static int32_t motor_2_speed_setpoint = 0;
 
+static int32_t motor_1_current = 0;
+static int32_t motor_1_current_setpoint = 0;
+
+static int32_t motor_2_current = 0;
+static int32_t motor_2_current_setpoint = 0;
+
+// 电机模块初始化
+void MotorInit() {
+
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
+
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 60000);
+  EncPLL_Init(&motor1_pll, 10.0f, 2.0f, 0.01f);
+  EncPLL_Init(&motor2_pll, 10.0f, 2.0f, 0.01f);
+
+  PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 30.0f, 10.0f, 0.5f, 0.5f,
+           0.01f);
+  PID_SetOutputLimit(&motor1_speed_pid, 0, 10000.0f);
+
+  PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 30.0f, 10.0f, 0.5f, 0.5f,
+           0.01f);
+  PID_SetOutputLimit(&motor1_speed_pid, 0, 10000.0f);
+
+  PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 30.0f, 10.0f, 0.5f, 0.5f,
+           0.01f);
+  PID_SetOutputLimit(&motor1_speed_pid, 0, 10000.0f);
+
+  PID_Init(&motor2_current_pid, PID_MODE_POSITIONAL, 30.0f, 10.0f, 0.5f, 0.5f,
+           0.01f);
+  PID_SetOutputLimit(&motor1_speed_pid, 0, 10000.0f);
+}
+
+void SetTargetMotorSpeed(int32_t motor_1, int32_t motor_2) {
+  motor_1_speed_setpoint = motor_1;
+  motor_2_speed_setpoint = motor_2;
+}
+void SetTargetMotorCurrent(int32_t motor_1, int32_t motor_2) {
+  motor_1_current_setpoint = motor_1;
+  motor_2_current_setpoint = motor_2;
+}
 void CurrentLoopTimerHandler() {
-  // 应用低通滤波
-  float filtered_current =
-      current_filter.alpha * (float)motor_a_current +
-      (1.0f - current_filter.alpha) * current_filter.filtered;
-  current_filter.filtered = filtered_current;
 
-  float output = PID_Update_Positional(&motor_pid, motor_a_current_setpoint,
-                                       filtered_current);
-  // printf("%d,%d\n", (int)(output), (int)filtered_current);
+  float output_1 = PID_Update_Positional(&motor1_current_pid, motor_1_current_setpoint,
+                                         motor_1_current);
+  // printf("%d.,%d\n", (int)(output), (int)filtered_current);
 
   __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1,
-                        ((uint16_t)(65535 * output / 10000.0)));
+                        ((uint16_t)(65535 * output_1 / 10000.0)));
+}
+void SpeedLoopHandler() {
+  // float speed = EncPLL_Update(&motor_pll, (uint32_t)Get_Encoder1_Count());
+  // float output = PID_Update_Positional(&motor_pid, 3000 + 1500 * sinf(omega),
+  //                                      speed); // 减小 setpoint
+  //                                              // 
+  // motor_a_current_setpoint = (int32_t)(output * 6.0f);
+
+  // printf("%ld,%d,%d,%d\n", Get_Encoder1_Count(), (int)speed, (int)output,
+  //        (int)(3000 + 1500 * sinf(omega)));
 }
 void CurrentLoopInit() {
-  PID_Init(&motor_pid, PID_MODE_POSITIONAL, 0., 0.3f, 0.0f, 0.01,
-           0.001f); // 减小 Kf
-  PID_SetOutputLimit(&motor_pid, 0, 10000.0f);
-  // 初始化低通滤波器
-  current_filter.alpha = 0.1f; // 滤波系数，可根据需要调整
-  current_filter.filtered = 0.0f;
+  // PID_Init(&motor_pid, PID_MODE_POSITIONAL, 0., 0.3f, 0.0f, 0.01,
+  //          0.001f); // 减小 Kf
+  // PID_SetOutputLimit(&motor_pid, 0, 10000.0f);
 }
 // 处理单次读取，利用差分纠正溢出（前提：两次读取之间的真实增量 < 32768）
 static inline int32_t DiffUpdate(uint16_t raw, uint16_t *last_raw,
