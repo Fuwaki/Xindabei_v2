@@ -48,6 +48,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/tof.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/track.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/car_control.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/gyro.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/meg_adc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/icm42688.c
     )
 
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE

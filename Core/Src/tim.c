@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    tim.c
-  * @brief   This file provides code for the configuration
-  *          of the TIM instances.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    tim.c
+ * @brief   This file provides code for the configuration
+ *          of the TIM instances.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "tim.h"
@@ -163,6 +163,7 @@ void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
+
 
   /* USER CODE END TIM3_Init 2 */
 
@@ -439,11 +440,11 @@ void HAL_TIM_Encoder_MspDeInit(TIM_HandleTypeDef* tim_encoderHandle)
 
     /* TIM1 interrupt Deinit */
   /* USER CODE BEGIN TIM1:TIM1_BRK_TIM9_IRQn disable */
-    /**
-    * Uncomment the line below to disable the "TIM1_BRK_TIM9_IRQn" interrupt
-    * Be aware, disabling shared interrupt may affect other IPs
-    */
-    /* HAL_NVIC_DisableIRQ(TIM1_BRK_TIM9_IRQn); */
+        /**
+         * Uncomment the line below to disable the "TIM1_BRK_TIM9_IRQn" interrupt
+         * Be aware, disabling shared interrupt may affect other IPs
+         */
+        /* HAL_NVIC_DisableIRQ(TIM1_BRK_TIM9_IRQn); */
   /* USER CODE END TIM1:TIM1_BRK_TIM9_IRQn disable */
 
     HAL_NVIC_DisableIRQ(TIM1_TRG_COM_TIM11_IRQn);
@@ -513,11 +514,11 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* tim_baseHandle)
 
     /* TIM9 interrupt Deinit */
   /* USER CODE BEGIN TIM9:TIM1_BRK_TIM9_IRQn disable */
-    /**
-    * Uncomment the line below to disable the "TIM1_BRK_TIM9_IRQn" interrupt
-    * Be aware, disabling shared interrupt may affect other IPs
-    */
-    /* HAL_NVIC_DisableIRQ(TIM1_BRK_TIM9_IRQn); */
+        /**
+         * Uncomment the line below to disable the "TIM1_BRK_TIM9_IRQn" interrupt
+         * Be aware, disabling shared interrupt may affect other IPs
+         */
+        /* HAL_NVIC_DisableIRQ(TIM1_BRK_TIM9_IRQn); */
   /* USER CODE END TIM9:TIM1_BRK_TIM9_IRQn disable */
 
   /* USER CODE BEGIN TIM9_MspDeInit 1 */
