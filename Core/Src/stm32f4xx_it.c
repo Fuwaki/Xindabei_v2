@@ -272,10 +272,12 @@ void DMA2_Stream3_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  if (GPIO_Pin == GPIO_PIN_15) {
-    BaseType_t xHPW = pdFALSE;
-    vTaskNotifyGiveFromISR(ToFMeasureTaskHandle, &xHPW);
-    portYIELD_FROM_ISR(xHPW);
+  if (GPIO_Pin == TOF_DRDY_Pin) {
+    if (ToFMeasureTaskHandle != NULL) {
+      BaseType_t xHPW = pdFALSE;
+      vTaskNotifyGiveFromISR(ToFMeasureTaskHandle, &xHPW);
+      portYIELD_FROM_ISR(xHPW);
+    }
   }
 }
 

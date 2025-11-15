@@ -1,12 +1,15 @@
 #include "gyro.h"
 #include "icm42688.h"
+#include "log.h"
 void GyroInit()
 {
+    LOG_INFO("GyroInit start");
     icm42688_config_t config = {.gyro_sample = ICM42688_GYRO_SAMPLE_SGN_1000DPS,
                                 .acc_sample = ICM42688_ACC_SAMPLE_SGN_2G,
                                 .sample_rate = ICM42688_SAMPLE_RATE_100,
                                 .interface_type = ICM42688_INTERFACE_SPI};
     stm32_icm42688_hal_init(&config);
+    LOG_INFO("GyroInit done");
 }
 void GyroHandler()
 {

@@ -2,6 +2,7 @@
 #include "motor.h"
 #include "pid.h"
 #include "tim.h"
+#include "log.h"
 #include <stdint.h>
 
 // 使用差分法扩展编码器值：记录上一原始计数并根据差值调整扩展计数，避免依赖更新中断
@@ -36,6 +37,7 @@ static int32_t motor_2_current_setpoint = 0;
 
 // 电机模块初始化
 void MotorInit() {
+  LOG_INFO("MotorInit start");
 
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
@@ -59,6 +61,7 @@ void MotorInit() {
   PID_Init(&motor2_current_pid, PID_MODE_POSITIONAL, 30.0f, 10.0f, 0.5f, 0.5f,
            0.01f);
   PID_SetOutputLimit(&motor1_speed_pid, 0, 10000.0f);
+  LOG_INFO("MotorInit done");
 }
 
 void SetTargetMotorSpeed(int32_t motor_1, int32_t motor_2) {
