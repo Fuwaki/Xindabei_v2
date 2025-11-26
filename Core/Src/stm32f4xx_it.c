@@ -46,6 +46,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 uint8_t uart_rx_buf[UART_BUF_LEN];
+extern TaskHandle_t ToFMeasureTaskHandle;
+extern TaskHandle_t AdcCaptureTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -84,8 +86,9 @@ void NMI_Handler(void)
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-  while (1) {
-  }
+    while (1)
+    {
+    }
   /* USER CODE END NonMaskableInt_IRQn 1 */
 }
 
@@ -170,6 +173,20 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles EXTI line4 interrupt.
+  */
+void EXTI4_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI4_IRQn 0 */
+
+  /* USER CODE END EXTI4_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(ICM_INT_Pin);
+  /* USER CODE BEGIN EXTI4_IRQn 1 */
+
+  /* USER CODE END EXTI4_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA1 stream5 global interrupt.
   */
 void DMA1_Stream5_IRQHandler(void)
@@ -195,6 +212,20 @@ void DMA1_Stream6_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Stream6_IRQn 1 */
 
   /* USER CODE END DMA1_Stream6_IRQn 1 */
+}
+
+/**
+  * @brief This function handles EXTI line[9:5] interrupts.
+  */
+void EXTI9_5_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI9_5_IRQn 0 */
+
+  /* USER CODE END EXTI9_5_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(TOF_DRDY_Pin);
+  /* USER CODE BEGIN EXTI9_5_IRQn 1 */
+
+  /* USER CODE END EXTI9_5_IRQn 1 */
 }
 
 /**
@@ -242,6 +273,20 @@ void USART2_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles EXTI line[15:10] interrupts.
+  */
+void EXTI15_10_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI15_10_IRQn 0 */
+
+  /* USER CODE END EXTI15_10_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(ADC_DRDY_Pin);
+  /* USER CODE BEGIN EXTI15_10_IRQn 1 */
+
+  /* USER CODE END EXTI15_10_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA2 stream0 global interrupt.
   */
 void DMA2_Stream0_IRQHandler(void)
@@ -270,23 +315,52 @@ void DMA2_Stream3_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+#include "motor.h" // 引入motor.h以使用Motor_UpdateCurrentFeedback
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  if (GPIO_Pin == TOF_DRDY_Pin) {
-    if (ToFMeasureTaskHandle != NULL) {
-      BaseType_t xHPW = pdFALSE;
-      vTaskNotifyGiveFromISR(ToFMeasureTaskHandle, &xHPW);
-      portYIELD_FROM_ISR(xHPW);
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == TOF_DRDY_Pin)
+    {
+        if (ToFMeasureTaskHandle != NULL)
+        {
+
+            BaseType_t xHPW = pdFALSE;
+            vTaskNotifyGiveFromISR(ToFMeasureTaskHandle, &xHPW);
+            portYIELD_FROM_ISR(xHPW);
+        }
     }
-  }
+    else if (GPIO_Pin == ADC_DRDY_Pin)
+    {
+        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+
+        if (AdcCaptureTaskHandle != NULL)
+        {
+            BaseType_t xHPW = pdFALSE;
+            vTaskNotifyGiveFromISR(AdcCaptureTaskHandle, &xHPW);
+            portYIELD_FROM_ISR(xHPW);
+        }
+    }
 }
 
 /* USER CODE BEGIN 1 */
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
-  if (huart->Instance == USART2) {
-    osMessageQueuePut(uartQueueHandle, &Size, 0U, 0U);
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_rx_buf, UART_BUF_LEN);
-  }
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+    if (huart->Instance == USART2)
+    {
+        osMessageQueuePut(uartQueueHandle, &Size, 0U, 0U);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_rx_buf, UART_BUF_LEN);
+    }
 }
+void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1)
+    {
+        // 读取ADC注入组转换结果
+        uint32_t raw1 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
+        uint32_t raw2 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
 
+        // 调用motor模块的接口更新电流反馈值 (包含滤波处理)
+        Motor_UpdateCurrentFeedback(raw1, raw2);
+    }
+}
 /* USER CODE END 1 */

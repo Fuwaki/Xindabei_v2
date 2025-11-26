@@ -19,7 +19,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
-#include "cmsis_os2.h"
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
@@ -31,12 +30,14 @@
 #include "gyro.h"
 #include "meg_adc.h"
 #include "motor.h"
+#include "oled_service.h"
 #include "tim.h"
 #include "tof.h"
 #include "track.h"
 #include "uart_command.h"
 #include "usart.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 /* USER CODE END Includes */
@@ -66,7 +67,7 @@ TaskHandle_t AdcCaptureTaskHandle;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 256 * 4,
+  .stack_size = 386 * 4,
   .priority = (osPriority_t) osPriorityRealtime7,
 };
 /* Definitions for ToFCapture */
@@ -94,7 +95,7 @@ const osThreadAttr_t MotorSpeedTask_attributes = {
 osThreadId_t AdcCaptureHandle;
 const osThreadAttr_t AdcCapture_attributes = {
   .name = "AdcCapture",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for CarControlTask */
@@ -126,7 +127,23 @@ const osMessageQueueAttr_t uartQueue_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+void ConfigureTimerForRunTimeStats(void);
+unsigned long GetRunTimeCounterValue(void);
+float CalculateCpuUsage(void);
 
+// Data Source Callbacks
+int32_t GetCpuUsageInt(void) {
+    return (int32_t)CalculateCpuUsage();
+}
+
+float GetCpuUsageFloat(void) {
+    return CalculateCpuUsage();
+}
+
+float GetAdcCh1(void) { return MegAdcGetResult().l; }
+float GetAdcCh2(void) { return MegAdcGetResult().lm; }
+float GetAdcCh3(void) { return MegAdcGetResult().r; }
+float GetAdcCh4(void) { return MegAdcGetResult().rm; }
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -209,22 +226,41 @@ void MX_FREERTOS_Init(void) {
 /**
  * @brief  Function implementing the defaultTask thread.
  * @param  argument: Not used
- * @retval None
+ * @retval NoneB
  */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
     /* Infinite loop */
+    OledServiceInit();
+    
+    OledRegisterFloat("CPU", GetCpuUsageFloat);
+    OledRegisterFloat("CH1", GetAdcCh1);
+    OledRegisterFloat("CH2", GetAdcCh2);
+    OledRegisterFloat("CH3", GetAdcCh3);
+    OledRegisterFloat("CH4", GetAdcCh4);
 
     for (;;)
     {
-        // print_handler();
-        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+        HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // 页面切换按钮
+        if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+            osDelay(20); // Debounce
+            if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+                OledNextPage();
+                // 等待松开
+                while(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+                    osDelay(10);
+                }
+            }
+        }
+
+        OledServiceUpdate();
+
+        osDelay(100);
     }
-
   /* USER CODE END StartDefaultTask */
 }
 
@@ -239,11 +275,13 @@ void TofTask(void *argument)
 {
   /* USER CODE BEGIN TofTask */
     ToFMeasureTaskHandle = xTaskGetCurrentTaskHandle();
-    TofInit();
+    // TofInit();
 
     for (;;)
     {
-        TofHandler();
+
+        // TofHandler();
+        osDelay(100);
     }
   /* USER CODE END TofTask */
 }
@@ -375,6 +413,59 @@ void TrackTaskFunc(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+void ConfigureTimerForRunTimeStats(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
 
+unsigned long GetRunTimeCounterValue(void)
+{
+    return DWT->CYCCNT;
+}
+
+float CalculateCpuUsage(void)
+{
+    static uint32_t ulLastIdleTime = 0;
+    static uint32_t ulLastTotalTime = 0;
+    static float cpuUsage = 0.0f;
+
+    TaskStatus_t *pxTaskStatusArray;
+    volatile UBaseType_t uxArraySize, x;
+    uint32_t ulTotalRunTime;
+
+    uxArraySize = uxTaskGetNumberOfTasks();
+    pxTaskStatusArray = pvPortMalloc( uxArraySize * sizeof( TaskStatus_t ) );
+
+    if( pxTaskStatusArray != NULL )
+    {
+        uxArraySize = uxTaskGetSystemState( pxTaskStatusArray, uxArraySize, &ulTotalRunTime );
+
+        for( x = 0; x < uxArraySize; x++ )
+        {
+            if( pxTaskStatusArray[x].xHandle == xTaskGetIdleTaskHandle() )
+            {
+                uint32_t ulIdleTime = pxTaskStatusArray[x].ulRunTimeCounter;
+                uint32_t ulTotalTime = ulTotalRunTime;
+
+                uint32_t ulIdleDelta = ulIdleTime - ulLastIdleTime;
+                uint32_t ulTotalDelta = ulTotalTime - ulLastTotalTime;
+
+                if( ulTotalDelta > 0 )
+                {
+                    cpuUsage = 100.0f * ( 1.0f - ((float)ulIdleDelta / (float)ulTotalDelta) );
+                }
+
+                ulLastIdleTime = ulIdleTime;
+                ulLastTotalTime = ulTotalTime;
+                break;
+            }
+        }
+        vPortFree( pxTaskStatusArray );
+    }
+
+    return cpuUsage;
+}
 /* USER CODE END Application */
 

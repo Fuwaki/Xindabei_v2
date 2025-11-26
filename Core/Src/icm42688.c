@@ -11,6 +11,7 @@
 #include "main.h"
 #include "spi.h"
 #include "stm32f4xx_hal_gpio.h"
+#include <stdio.h>
 
 // 全局变量
 icm42688_axis_data_t icm42688_gyro;  /**< 三轴陀螺仪数据 */
@@ -42,7 +43,9 @@ void my_spi_read_burst(uint8_t reg, uint8_t *data, uint8_t len) {
     HAL_SPI_Receive(&hspi1, data, len, 10);
     HAL_GPIO_WritePin(ICM_CS_GPIO_Port, ICM_CS_Pin, GPIO_PIN_SET);
 }
-void my_delay_ms(uint16_t ms) {}
+void my_delay_ms(uint16_t ms) {
+    HAL_Delay(ms);
+}
 
 // 硬件接口
 static icm42688_comm_t *p_comm = NULL;
@@ -201,6 +204,7 @@ uint8_t icm42688_init(void) {
 
   // 读取设备ID
   id = p_comm->read_reg(ICM42688_WHO_AM_I);
+  printf("id:%d\n",id);
   if (id != ICM42688_ID) {
     return 2; // ID不匹配
   }

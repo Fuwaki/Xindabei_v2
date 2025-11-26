@@ -19,17 +19,18 @@ void CarControlInit()
 
 void CarControlHandler()
 {
-    static int first = 1;
-    if (first) { LOG_INFO("CarControlHandler loop entered"); first = 0; }
-    gyro_data data = GyroGetGyroData();
-    // TODO: 增加前馈
-    // TODO: 限幅, target_angular_veloci
-    // TODO: 方向矫正
-    float angular_velocity_output = PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, data.yaw);
-    float left_motor_speed = target_velocity - angular_velocity_output;
-    float right_motor_speed = target_velocity + angular_velocity_output;
-    //设置电机速度
-    SetTargetMotorSpeed((int32_t)(left_motor_speed * 100), (int32_t)(right_motor_speed * 100));
+    // static int first = 1;
+    // if (first) { LOG_INFO("CarControlHandler loop entered"); first = 0; }
+    // gyro_data data = GyroGetGyroData();
+    // // TODO: 增加前馈
+    // // TODO: 限幅, target_angular_veloci
+    // // TODO: 方向矫正
+    // float angular_velocity_output = PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, data.yaw);
+    // float left_motor_speed = target_velocity - angular_velocity_output;
+    // float right_motor_speed = target_velocity + angular_velocity_output;
+    // //设置电机速度
+    // SetTargetMotorSpeed((int32_t)(left_motor_speed * 100), (int32_t)(right_motor_speed * 100));
+    
 }
 void SetTargetCarStatus(float velocity, float angular_velocity)
 {

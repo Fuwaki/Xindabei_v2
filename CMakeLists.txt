@@ -51,6 +51,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/gyro.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/meg_adc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/icm42688.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ssd1306.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ssd1306_fonts.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/oled_display.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/oled_service.c
+
     )
 
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE

@@ -5,4 +5,4 @@ typedef struct
 } adc_result;
 void MegAdcInit();
 void MegAdcHandler();
-adc_result GetAdcResult();
+adc_result MegAdcGetResult();

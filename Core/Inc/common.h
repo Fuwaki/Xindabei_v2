@@ -1,7 +1,7 @@
 /* app_common.h */
 #pragma once
-#include "cmsis_os2.h"   // 为了 osEventFlagsId_t
-#include "FreeRTOS.h"    // 为了 TaskHandle_t
+#include "cmsis_os2.h"
+#include "FreeRTOS.h"
 #include "task.h"
 extern TaskHandle_t ToFMeasureTaskHandle;
 extern osMessageQueueId_t uartQueueHandle;

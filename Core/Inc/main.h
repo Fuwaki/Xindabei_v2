@@ -67,6 +67,9 @@ void Error_Handler(void);
 #define PWM2_A_GPIO_Port GPIOA
 #define STOP_Pin GPIO_PIN_1
 #define STOP_GPIO_Port GPIOA
+#define ICM_INT_Pin GPIO_PIN_4
+#define ICM_INT_GPIO_Port GPIOA
+#define ICM_INT_EXTI_IRQn EXTI4_IRQn
 #define ICM_SCLK_Pin GPIO_PIN_5
 #define ICM_SCLK_GPIO_Port GPIOA
 #define ICM_MISO_Pin GPIO_PIN_6
@@ -77,6 +80,7 @@ void Error_Handler(void);
 #define ICM_CS_GPIO_Port GPIOC
 #define TOF_DRDY_Pin GPIO_PIN_5
 #define TOF_DRDY_GPIO_Port GPIOC
+#define TOF_DRDY_EXTI_IRQn EXTI9_5_IRQn
 #define LED1_Pin GPIO_PIN_0
 #define LED1_GPIO_Port GPIOB
 #define LED2_Pin GPIO_PIN_1
@@ -87,12 +91,17 @@ void Error_Handler(void);
 #define KEY1_GPIO_Port GPIOB
 #define ENCODER2_A_Pin GPIO_PIN_7
 #define ENCODER2_A_GPIO_Port GPIOC
+#define OLED_SDA_Pin GPIO_PIN_8
+#define OLED_SDA_GPIO_Port GPIOC
+#define OLED_SCL_Pin GPIO_PIN_9
+#define OLED_SCL_GPIO_Port GPIOC
 #define ENCODER1_B_Pin GPIO_PIN_8
 #define ENCODER1_B_GPIO_Port GPIOA
 #define ENCODER1_A_Pin GPIO_PIN_9
 #define ENCODER1_A_GPIO_Port GPIOA
 #define ADC_DRDY_Pin GPIO_PIN_15
 #define ADC_DRDY_GPIO_Port GPIOA
+#define ADC_DRDY_EXTI_IRQn EXTI15_10_IRQn
 #define ADC_SCLK_Pin GPIO_PIN_10
 #define ADC_SCLK_GPIO_Port GPIOC
 #define ADC_MISO_Pin GPIO_PIN_11

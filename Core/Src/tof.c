@@ -3,10 +3,12 @@
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "task.h"
 #include "log.h"
+#include "uart_command.h"
 #include "vl53l0x_api.h"
 #include "vl53l0x_platform.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #define TOF_I2C_ADDRESS (0x52U)
@@ -114,6 +116,14 @@ static bool tof_perform_initialization(void)
 		return false;
 	}
 
+	status = VL53L0X_SetGpioConfig(&s_vl53l0x_dev, 0, VL53L0X_DEVICEMODE_CONTINUOUS_RANGING,
+									VL53L0X_GPIOFUNCTIONALITY_NEW_MEASURE_READY,
+									VL53L0X_INTERRUPTPOLARITY_LOW);
+	if (status != VL53L0X_ERROR_NONE) {
+		tof_log_error("SetGpioConfig", status);
+		return false;
+	}
+
 	if (!tof_start_measurement()) {
 		return false;
 	}
@@ -136,7 +146,7 @@ void TofInit(void)
 	} else {
 		LOG_ERROR("VL53L0X initialization failed. Check connections and power.");
 		tof_reset_state();
-	}
+    }
 }
 
 void TofHandler(void)
@@ -185,7 +195,7 @@ void TofHandler(void)
 		if (!tof_start_measurement()) {
 			tof_reset_state();
 		}
-	}
+    }
 }
 
 float TofGetDistance(void)

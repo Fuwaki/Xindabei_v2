@@ -98,6 +98,8 @@
 #define configUSE_OS2_THREAD_ENUMERATE       1
 #define configUSE_OS2_EVENTFLAGS_FROM_ISR    1
 #define configUSE_OS2_THREAD_FLAGS           1
+
+#define configUSE_NEWLIB_REENTRANT           1
 #define configUSE_OS2_TIMER                  1
 #define configUSE_OS2_MUTEX                  1
 
@@ -165,6 +167,12 @@ standard names. */
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
+#define INCLUDE_xTaskGetIdleTaskHandle 1
+extern void ConfigureTimerForRunTimeStats(void);
+extern unsigned long GetRunTimeCounterValue(void);
+#define configGENERATE_RUN_TIME_STATS 1
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() ConfigureTimerForRunTimeStats()
+#define portGET_RUN_TIME_COUNTER_VALUE() GetRunTimeCounterValue()
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */

@@ -88,18 +88,26 @@ void ADS1220Init(void)
 void ADS1220Config(void)
 {
 	unsigned Temp;
-	ADS1220ReadRegister(ADS1220_0_REGISTER, 0x01, &Temp);
-	/* clear prev value; */
-   	Temp &= 0x0f;
-   	Temp |= ADS1220_MUX_0_G;
-   	/* write the register value containing the new value back to the ADS */
+	
+	/* Register 0: MUX_0_G (default), GAIN_1, PGA_BYPASS (Enabled) */
+	/* Priority on accuracy, Single-ended signals (0-Vref) require PGA Bypass */
+	Temp = ADS1220_MUX_0_G | ADS1220_GAIN_1 | ADS1220_PGA_BYPASS;
    	ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &Temp);
-	ADS1220ReadRegister(ADS1220_1_REGISTER, 0x01, &Temp);
-	/* clear prev DataRate code; */
-	Temp &= 0x1f;
-	Temp |= (ADS1220_DR_600 + ADS1220_CC);		/* Set default start mode to 600sps and continuous conversions */
-	/* write the register value containing the new value back to the ADS */
-	ADS1220WriteRegister(ADS1220_1_REGISTER, 0x01, &Temp);
+
+	/* Register 1: DR_600 (600 SPS), MODE_NORMAL, Single-Shot Mode */
+	/* 600 SPS Normal Mode provides ~1.7ms settling time per channel. */
+	/* 4 channels * 1.7ms = 6.8ms < 10ms (100Hz) */
+	Temp = ADS1220_DR_20 | ADS1220_MODE_TURBO;
+   	ADS1220WriteRegister(ADS1220_1_REGISTER, 0x01, &Temp);	/* Register 2: VREF_INT (2.048V), IDAC_OFF */
+	Temp = ADS1220_VREF_INT | ADS1220_IDAC_OFF;
+	ADS1220WriteRegister(ADS1220_2_REGISTER, 0x01, &Temp);
+
+	/* Register 3: Default */
+	Temp = 0x00;
+	ADS1220WriteRegister(ADS1220_3_REGISTER, 0x01, &Temp);
+	
+	/* Start Conversion */
+	ADS1220SendStartCommand();
 }
 /*  Polling Function */
 int ADS1220WaitForDataReady(int Timeout)
@@ -263,9 +271,18 @@ register set value commands
 */
 int ADS1220SetChannel(int Mux)
 {
-	unsigned int cMux = Mux;	   
+	unsigned int Temp;
+	/* Read Register 0 to preserve GAIN and PGA settings */
+	ADS1220ReadRegister(ADS1220_0_REGISTER, 0x01, &Temp);
+	
+	/* Clear MUX bits (7:4) */
+	Temp &= 0x0F;
+	
+	/* Set new MUX bits */
+	Temp |= (Mux & 0xF0);
+	
    /* write the register value containing the new value back to the ADS */
-   ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &cMux);
+   ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &Temp);
    return ADS1220_NO_ERROR;
 }
 int ADS1220SetGain(int Gain)
