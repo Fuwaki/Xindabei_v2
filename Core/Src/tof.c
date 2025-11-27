@@ -198,7 +198,7 @@ void TofHandler(void)
     }
 }
 
-float TofGetDistance(void)
+uint16_t TofGetDistance(void)
 {
-	return (float)s_distance_mm;
+	return s_distance_mm;
 }

@@ -132,18 +132,36 @@ unsigned long GetRunTimeCounterValue(void);
 float CalculateCpuUsage(void);
 
 // Data Source Callbacks
-int32_t GetCpuUsageInt(void) {
+int32_t GetCpuUsageInt(void)
+{
     return (int32_t)CalculateCpuUsage();
 }
 
-float GetCpuUsageFloat(void) {
+float GetCpuUsageFloat(void)
+{
     return CalculateCpuUsage();
 }
 
-float GetAdcCh1(void) { return MegAdcGetResult().l; }
-float GetAdcCh2(void) { return MegAdcGetResult().lm; }
-float GetAdcCh3(void) { return MegAdcGetResult().r; }
-float GetAdcCh4(void) { return MegAdcGetResult().rm; }
+float GetAdcCh1(void)
+{
+    return MegAdcGetResult().l;
+}
+float GetAdcCh2(void)
+{
+    return MegAdcGetResult().lm;
+}
+float GetAdcCh3(void)
+{
+    return MegAdcGetResult().r;
+}
+float GetAdcCh4(void)
+{
+    return MegAdcGetResult().rm;
+}
+int32_t GetTofDistance(void)
+{
+    return TofGetDistance();
+}
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -234,24 +252,28 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN StartDefaultTask */
     /* Infinite loop */
     OledServiceInit();
-    
+
     OledRegisterFloat("CPU", GetCpuUsageFloat);
     OledRegisterFloat("CH1", GetAdcCh1);
     OledRegisterFloat("CH2", GetAdcCh2);
     OledRegisterFloat("CH3", GetAdcCh3);
     OledRegisterFloat("CH4", GetAdcCh4);
+    OledRegisterInt("TOF", GetTofDistance);
 
     for (;;)
     {
         HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 
         // 页面切换按钮
-        if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+        if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+        {
             osDelay(20); // Debounce
-            if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+            if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+            {
                 OledNextPage();
                 // 等待松开
-                while(HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+                while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+                {
                     osDelay(10);
                 }
             }
@@ -275,13 +297,11 @@ void TofTask(void *argument)
 {
   /* USER CODE BEGIN TofTask */
     ToFMeasureTaskHandle = xTaskGetCurrentTaskHandle();
-    // TofInit();
+    TofInit();
 
     for (;;)
     {
-
-        // TofHandler();
-        osDelay(100);
+        TofHandler();
     }
   /* USER CODE END TofTask */
 }
@@ -436,15 +456,15 @@ float CalculateCpuUsage(void)
     uint32_t ulTotalRunTime;
 
     uxArraySize = uxTaskGetNumberOfTasks();
-    pxTaskStatusArray = pvPortMalloc( uxArraySize * sizeof( TaskStatus_t ) );
+    pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t));
 
-    if( pxTaskStatusArray != NULL )
+    if (pxTaskStatusArray != NULL)
     {
-        uxArraySize = uxTaskGetSystemState( pxTaskStatusArray, uxArraySize, &ulTotalRunTime );
+        uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, &ulTotalRunTime);
 
-        for( x = 0; x < uxArraySize; x++ )
+        for (x = 0; x < uxArraySize; x++)
         {
-            if( pxTaskStatusArray[x].xHandle == xTaskGetIdleTaskHandle() )
+            if (pxTaskStatusArray[x].xHandle == xTaskGetIdleTaskHandle())
             {
                 uint32_t ulIdleTime = pxTaskStatusArray[x].ulRunTimeCounter;
                 uint32_t ulTotalTime = ulTotalRunTime;
@@ -452,9 +472,9 @@ float CalculateCpuUsage(void)
                 uint32_t ulIdleDelta = ulIdleTime - ulLastIdleTime;
                 uint32_t ulTotalDelta = ulTotalTime - ulLastTotalTime;
 
-                if( ulTotalDelta > 0 )
+                if (ulTotalDelta > 0)
                 {
-                    cpuUsage = 100.0f * ( 1.0f - ((float)ulIdleDelta / (float)ulTotalDelta) );
+                    cpuUsage = 100.0f * (1.0f - ((float)ulIdleDelta / (float)ulTotalDelta));
                 }
 
                 ulLastIdleTime = ulIdleTime;
@@ -462,7 +482,7 @@ float CalculateCpuUsage(void)
                 break;
             }
         }
-        vPortFree( pxTaskStatusArray );
+        vPortFree(pxTaskStatusArray);
     }
 
     return cpuUsage;

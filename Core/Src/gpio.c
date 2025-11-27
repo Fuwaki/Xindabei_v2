@@ -95,7 +95,7 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pins : KEY3_Pin KEY2_Pin KEY1_Pin */
   GPIO_InitStruct.Pin = KEY3_Pin|KEY2_Pin|KEY1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : OLED_SDA_Pin OLED_SCL_Pin */

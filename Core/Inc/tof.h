@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 void TofInit();
 void TofHandler();
-float TofGetDistance();
+uint16_t TofGetDistance();
