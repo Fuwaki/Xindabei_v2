@@ -58,9 +58,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     )
 
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-    -u _printf_float
-)
+# target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+#     -u _printf_float
+# )
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE

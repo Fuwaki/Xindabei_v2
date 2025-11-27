@@ -65,5 +65,5 @@ float PID_Update_Incremental(PIDController *pid, float setpoint, float measureme
   pid->output = out;
   pid->prev_error2 = e1;
   pid->prev_error = e;
-  return out;
+  return clampf(out + pid->Kf * setpoint, pid->out_min, pid->out_max);
 }

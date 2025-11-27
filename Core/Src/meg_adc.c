@@ -26,6 +26,8 @@ void MegAdcInit()
 
 void MegAdcHandler()
 {
+    HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+
     // Channel 1 (AIN0)
     ADS1220SetChannel(ADS1220_MUX_0_G);
     ADS1220SendStartCommand();

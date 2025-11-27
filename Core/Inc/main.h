@@ -85,10 +85,14 @@ void Error_Handler(void);
 #define LED1_GPIO_Port GPIOB
 #define LED2_Pin GPIO_PIN_1
 #define LED2_GPIO_Port GPIOB
+#define KEY3_Pin GPIO_PIN_13
+#define KEY3_GPIO_Port GPIOB
 #define KEY2_Pin GPIO_PIN_14
 #define KEY2_GPIO_Port GPIOB
 #define KEY1_Pin GPIO_PIN_15
 #define KEY1_GPIO_Port GPIOB
+#define ENCODER2_B_Pin GPIO_PIN_6
+#define ENCODER2_B_GPIO_Port GPIOC
 #define ENCODER2_A_Pin GPIO_PIN_7
 #define ENCODER2_A_GPIO_Port GPIOC
 #define OLED_SDA_Pin GPIO_PIN_8
@@ -112,8 +116,6 @@ void Error_Handler(void);
 #define ADC_CS_GPIO_Port GPIOD
 #define PWM2_B_Pin GPIO_PIN_3
 #define PWM2_B_GPIO_Port GPIOB
-#define ENCODER2_B_Pin GPIO_PIN_4
-#define ENCODER2_B_GPIO_Port GPIOB
 #define PWM1_B_Pin GPIO_PIN_6
 #define PWM1_B_GPIO_Port GPIOB
 #define PWM1_A_Pin GPIO_PIN_7

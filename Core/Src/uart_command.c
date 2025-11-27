@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/_intsup.h>
+#include "common.h"
 
 static void set_speed_handler(int argc, char *argv[]) {
   if (argc < 2) {
@@ -26,7 +27,7 @@ float *printable_values[16] = {
 };
 void print_handler() {
   for (size_t i = 0; i < print_value_count; ++i) {
-    printf("%f", *printable_values[i]);
+    printf(FLOAT_FMT, FLOAT_TO_INT(*printable_values[i]));
     if (i < print_value_count - 1) {
       printf(",");
     } else {
@@ -54,7 +55,7 @@ void var_command_handler(int argc, char *argv[]) {
   if (argc == 1) {
     // 列出所有可变变量
     for (size_t i = 0; i < mutable_value_count; i++) {
-      printf("%s = %f\n", muttable_values[i].name, *(muttable_values[i].value));
+      printf("%s = " FLOAT_FMT "\n", muttable_values[i].name, FLOAT_TO_INT(*(muttable_values[i].value)));
     }
     return;
   }
@@ -63,12 +64,12 @@ void var_command_handler(int argc, char *argv[]) {
     if (strcmp(var_name, muttable_values[i].name) == 0) {
       if (argc == 2) {
         // 查询变量值
-        printf("%s = %f\n", var_name, *(muttable_values[i].value));
+        printf("%s = " FLOAT_FMT "\n", var_name, FLOAT_TO_INT(*(muttable_values[i].value)));
       } else if (argc == 3) {
         // 设置变量值
         float new_value = atof(argv[2]);
         *(muttable_values[i].value) = new_value;
-        printf("%s set to %f\n", var_name, new_value);
+        printf("%s set to " FLOAT_FMT "\n", var_name, FLOAT_TO_INT(new_value));
       } else {
         printf("ERR\n");
       }

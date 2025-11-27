@@ -1,5 +1,6 @@
 #include "motor.h"
 #include "adc.h"
+#include "common.h"
 #include "log.h"
 #include "main.h"
 #include "pid.h"
@@ -38,8 +39,8 @@ static PIDController motor2_current_pid;
 static EncPLL motor1_pll;
 static EncPLL motor2_pll;
 
-static int32_t motor_1_speed_setpoint = 1000;
-static int32_t motor_2_speed_setpoint = 0;
+static float motor_1_speed_setpoint = 100.0;
+static float motor_2_speed_setpoint = -300.0;
 
 static int32_t motor_1_current = 0;
 static int32_t motor_1_current_setpoint = 0;
@@ -136,13 +137,20 @@ void MotorInit()
     // 电流环adc采样 (开启中断)
     HAL_ADCEx_InjectedStart_IT(&hadc1);
 
-    EncPLL_Init(&motor1_pll, 8.0f, 2.0f, 0.01f);
-    EncPLL_Init(&motor2_pll, 8.0f, 2.0f, 0.01f);
+    // EncPLL 调参入口：
+    // f_min_hz: 稳态/低速时的观测带宽（越小越平滑）
+    // f_max_hz: 动态/大误差时的观测带宽（越大越跟得快）
+    // zeta    : 阻尼比（1.0~1.2 建议，无过冲且响应快）
+    // error_min: 误差阈值下限 (counts)，小于此值认为噪声
+    // error_max: 误差阈值上限 (counts)，大于此值认为运动
+    // dt      : 采样周期（由速度环调用频率决定，这里是 0.01s 对应 100Hz）
+    EncPLL_Init(&motor1_pll, 0.5f, 5.0f, 1.3f, 50.0f, 80.0f, 0.01f);
+    EncPLL_Init(&motor2_pll, 0.5f, 5.0f, 1.3f, 1.0f, 3.0f, 0.01f);
 
-    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.000f, 0.0f, 0.0f, 0.0f, 0.01f);
+    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.004f, 0.0001f, 0.0f, 0.0015f, 0.01f);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
 
-    PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.1f, 0.0f, 0.0f, 0.0f, 0.01f);
+    PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.008f, 0.04f, 0.0002f, 0.001f, 0.01f);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
 
     PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.01f);
@@ -153,7 +161,7 @@ void MotorInit()
     LOG_INFO("MotorInit done");
 }
 
-void SetTargetMotorSpeed(int32_t motor_1, int32_t motor_2)
+void SetTargetMotorSpeed(float motor_1, float motor_2)
 {
     motor_1_speed_setpoint = motor_1;
     motor_2_speed_setpoint = motor_2;
@@ -166,6 +174,8 @@ void SetTargetMotorCurrent(int32_t motor_1, int32_t motor_2)
 // 和a4950的引脚定义对应
 void apply_signed_pwm_with_fast_decay(TIM_HandleTypeDef *htim, float value)
 {
+    // 限幅到 [-1.0, 1.0]
+    value = value > 1.0f ? 1.0f : (value < -1.0f ? -1.0f : value);
 
     if (value > 0)
     {
@@ -184,6 +194,8 @@ void apply_signed_pwm_with_fast_decay(TIM_HandleTypeDef *htim, float value)
 }
 void apply_signed_pwm_with_slow_decay(TIM_HandleTypeDef *htim, float value)
 {
+    // 限幅到 [-1.0, 1.0]
+    value = value > 1.0f ? 1.0f : (value < -1.0f ? -1.0f : value);
     if (value > 0)
     {
         __HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, (uint32_t)(fabsf(value) * __HAL_TIM_GET_AUTORELOAD(htim)));
@@ -216,16 +228,23 @@ void CurrentLoopTimerHandler()
 
 void SpeedLoopHandler()
 {
-    float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count());
-    float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count());
-    float output_1 = PID_Update_Incremental(&motor1_speed_pid, (float)motor_1_speed_setpoint, speed_1);
-    float output_2 = PID_Update_Incremental(&motor2_speed_pid, (float)motor_2_speed_setpoint, speed_2);
+    static uint32_t tick = 0;
+    tick++;
+    motor_1_speed_setpoint=motor_2_speed_setpoint = 300.0f * sinf((float)tick * 0.05f);
 
-    printf("%f,%f,%f,%f,%d\n", speed_1, speed_2,output_1,output_2,(uint32_t)Get_Encoder1_Count());
+    float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 10.0f;
+    float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 10.0f;
+    float output_1 = PID_Update_Incremental(&motor1_speed_pid, motor_1_speed_setpoint, speed_1);
+    float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+
+    // // 打印格式：目标速度, 实际速度1, 实际速度2, PID输出1, PID输出2, 编码器1, 观测器误差1, 观测器带宽1
+    // printf(FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT ",%d\n",
+    //        FLOAT_TO_INT(motor_2_speed_setpoint), FLOAT_TO_INT(speed_1), FLOAT_TO_INT(speed_2), FLOAT_TO_INT(output_1),
+    //        FLOAT_TO_INT(output_2), (uint32_t)Get_Encoder2_Count());
 
 #if USE_SPEED_LOOP_ONLY
     // 直接将速度环PID输出作为PWM占空比应用
-    apply_signed_pwm_with_fast_decay(&htim4, 0.2);
+    apply_signed_pwm_with_fast_decay(&htim4, output_1);
     apply_signed_pwm_with_fast_decay(&htim2, output_2);
 #else
     SetTargetMotorCurrent((int32_t)output_1, (int32_t)output_2);
@@ -242,16 +261,12 @@ static inline int32_t DiffUpdate(uint16_t raw, uint16_t *last_raw, uint8_t *init
         *inited = 1;
         return *extended;
     }
-    int32_t diff = (int32_t)raw - (int32_t)(*last_raw);
-    // 处理正向溢出 (raw 小, last 大) 或反向溢出
-    if (diff > 32767)
-    {
-        diff -= 65536; // 说明发生了反向 wrap（raw 比 last 小很多）
-    }
-    else if (diff < -32768)
-    {
-        diff += 65536; // 说明发生了正向 wrap（raw 比 last 大很多为负大值）
-    }
+
+    // 优化：利用 int16_t 的强制转换自动处理 16 位溢出
+    // 只要两次采样间的变化量在 -32768 到 32767 之间，这种写法就是数学上等价的
+    // 且没有 if-else 分支，效率更高
+    int16_t diff = (int16_t)(raw - *last_raw);
+
     *extended += diff;
     *last_raw = raw;
     return *extended;
@@ -277,18 +292,34 @@ int32_t Get_Encoder2_Count(void)
     return val;
 }
 
-void EncPLL_Init(EncPLL *pll, float kp, float ki, float dt)
+void EncPLL_Init(EncPLL *pll, float f_min_hz, float f_max_hz, float zeta, float error_min, float error_max, float dt)
 {
-    pll->kp = kp;
-    pll->ki = ki;
     pll->dt = dt;
     pll->theta = 0.0f;
     pll->omega = 0.0f;
     pll->offset = 0;
-    // 初始化内部 PID 为增量式，禁用 D
-    PID_Init(&pll->pid, PID_MODE_INCREMENTAL, kp, ki, 0.0f, 0.0f, dt);
-    // 限幅可选：这里设置一个较大的范围，用户可后续调整
-    PID_SetOutputLimit(&pll->pid, -1e6f, 1e6f);
+
+    // 存储物理含义更明确的参数，便于上层直接调参
+    pll->f_min_hz = f_min_hz;
+    pll->f_max_hz = f_max_hz;
+    pll->zeta = zeta;
+    pll->error_min = error_min;
+    pll->error_max = error_max;
+
+    // 预计算优化常数，避免在中断/高频循环中进行除法和重复计算
+    pll->opt_omega_n_min = 2.0f * (float)M_PI * f_min_hz;
+    pll->opt_omega_n_max = 2.0f * (float)M_PI * f_max_hz;
+
+    if (error_max > error_min)
+    {
+        pll->opt_slope = (pll->opt_omega_n_max - pll->opt_omega_n_min) / (error_max - error_min);
+    }
+    else
+    {
+        pll->opt_slope = 0.0f;
+    }
+
+    pll->opt_two_zeta = 2.0f * zeta;
 }
 float EncPLL_Update(EncPLL *pll, int32_t now_theta)
 {
@@ -297,11 +328,57 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
     int32_t local_now_theta_i = now_theta - pll->offset;
     float local_now_theta = (float)local_now_theta_i;
 
-    float theta_pred = pll->theta + pll->omega * pll->dt;
-    // 使用增量式 PID：setpoint=local_now_theta, measurement=theta_pred
-    float new_omega = PID_Update_Incremental(&pll->pid, local_now_theta, theta_pred);
-    pll->omega = new_omega;  // omega 与 PID 输出绑定
-    pll->theta = theta_pred; // 仅推进，不额外相位比例修正
+    // 计算位置误差
+    float error = local_now_theta - pll->theta;
+
+    // --- 自适应带宽观测器 (Adaptive Bandwidth Observer) ---
+    // 严谨性说明：
+    // 这是一个基于误差大小动态调整系统带宽的观测器，类似于 One Euro Filter 的思想，
+    // 但基于 Luenberger 观测器的极点配置理论。
+    //
+    // 核心策略：保持阻尼比(zeta)恒定，根据误差动态调整自然频率(omega_n)。
+    // 1. 阻尼比 zeta = 1.2 (恒定)：保证系统始终处于过阻尼状态，无论带宽如何，都不会发生震荡和过冲。
+    // 2. 自然频率 omega_n (动态)：
+    //    - 误差小 (稳态) -> 低带宽 -> 强滤波，极度平滑。
+    //    - 误差大 (动态) -> 高带宽 -> 强跟踪，无滞后。
+
+    float error_abs = fabsf(error);
+    float omega_n;
+
+    // 设定误差阈值 (counts)
+    // < error_min: 认为是纯噪声，使用最小带宽
+    // > error_max: 认为是明确运动，使用最大带宽
+    // 中间: 线性插值平滑过渡
+    if (error_abs <= pll->error_min)
+    {
+        omega_n = pll->opt_omega_n_min;
+    }
+    else if (error_abs >= pll->error_max)
+    {
+        omega_n = pll->opt_omega_n_max;
+    }
+    else
+    {
+        // 线性插值优化：使用预计算的斜率，将除法转换为乘法
+        // omega_n = omega_n_min + (error_abs - error_min) * slope
+        omega_n = pll->opt_omega_n_min + (error_abs - pll->error_min) * pll->opt_slope;
+    }
+
+    // 保存调试信息
+    pll->debug_error = error;
+    pll->debug_omega_n = omega_n;
+
+    // 根据极点配置公式实时计算增益
+    // Ki = omega_n^2
+    // Kp = 2 * zeta * omega_n
+    float current_ki = omega_n * omega_n;
+    float current_kp = pll->opt_two_zeta * omega_n;
+
+    // 1. 速度 omega 仅由积分项驱动
+    pll->omega += current_ki * error * pll->dt;
+
+    // 2. 位置 theta 由 速度 omega 和 比例项 (kp * error) 共同驱动
+    pll->theta += (pll->omega + current_kp * error) * pll->dt;
 
     // 定期重置坐标系，保持浮点数在小范围内 (例如 +/- 20000)
     // 这样可以保证 float 的精度足以分辨 1 个 count 的变化
@@ -310,7 +387,6 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
         int32_t shift = (int32_t)pll->theta;
         pll->offset += shift;
         pll->theta -= (float)shift;
-        // 注意：PID 内部存储的是误差(error)，坐标系平移不改变误差值，因此无需重置 PID
     }
 
     return pll->omega;

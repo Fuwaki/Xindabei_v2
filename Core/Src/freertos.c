@@ -68,7 +68,7 @@ osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
   .stack_size = 386 * 4,
-  .priority = (osPriority_t) osPriorityRealtime7,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ToFCapture */
 osThreadId_t ToFCaptureHandle;

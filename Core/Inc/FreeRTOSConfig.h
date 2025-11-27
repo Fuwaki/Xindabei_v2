@@ -98,8 +98,6 @@
 #define configUSE_OS2_THREAD_ENUMERATE       1
 #define configUSE_OS2_EVENTFLAGS_FROM_ISR    1
 #define configUSE_OS2_THREAD_FLAGS           1
-
-#define configUSE_NEWLIB_REENTRANT           1
 #define configUSE_OS2_TIMER                  1
 #define configUSE_OS2_MUTEX                  1
 

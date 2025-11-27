@@ -3,6 +3,7 @@
 #include "ssd1306_fonts.h"
 #include <stdio.h>
 #include <string.h>
+#include "common.h"
 
 #define MAX_DISPLAY_ITEMS 20
 #define ITEMS_PER_PAGE 5
@@ -118,7 +119,7 @@ void OledServiceUpdate(void)
                 snprintf(buffer, sizeof(buffer), "%s: %d", item->label, (int)item->callback.intCb());
                 break;
             case DISPLAY_TYPE_FLOAT:
-                snprintf(buffer, sizeof(buffer), "%s: %.4g", item->label, item->callback.floatCb());
+                snprintf(buffer, sizeof(buffer), "%s: "FLOAT_FMT"", item->label,FLOAT_TO_INT(item->callback.floatCb()));
                 break;
             case DISPLAY_TYPE_STRING:
                 snprintf(buffer, sizeof(buffer), "%s: %s", item->label, item->callback.stringCb());
