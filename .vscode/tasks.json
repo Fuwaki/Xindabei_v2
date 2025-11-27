@@ -22,7 +22,7 @@
             "type": "shell",
             "command": "openocd",
             "args": [
-                "-f", "interface/stlink.cfg",
+                "-f", "interface/cmsis-dap.cfg",
                 "-f", "target/stm32f4x.cfg",
                 "-c", "adapter speed 2000; init; reset halt; program ${workspaceFolder}/build/Release/Xindabei_v2.bin 0x08000000 verify; reset run; shutdown"
             ],
