@@ -6,3 +6,4 @@ typedef struct
 void MegAdcInit();
 void MegAdcHandler();
 adc_result MegAdcGetResult();
+adc_result MegAdcGetCalibratedResult();

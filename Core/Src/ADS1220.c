@@ -287,7 +287,7 @@ int ADS1220SetChannel(int Mux)
 }
 int ADS1220SetGain(int Gain)
 {
-	unsigned int cGain = Gain;   
+	unsigned int cGain = Gain;
 	/* write the register value containing the new code back to the ADS */
 	ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &cGain);
 	return ADS1220_NO_ERROR;
