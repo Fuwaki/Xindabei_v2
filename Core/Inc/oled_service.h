@@ -4,32 +4,19 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// 定义数据类型枚举
-typedef enum {
-    DISPLAY_TYPE_INT,
-    DISPLAY_TYPE_FLOAT,
-    DISPLAY_TYPE_STRING
-} DisplayType;
-
-// 定义回调函数类型
-typedef int32_t (*IntSourceCb)(void);
-typedef float (*FloatSourceCb)(void);
-typedef const char* (*StringSourceCb)(void);
-
 // 初始化服务
 void OledServiceInit(void);
 
-// 注册数据源
-// label: 显示的标签 (例如 "CPU Usage")
-// callback: 获取数据的回调函数
-// 返回值: true 成功, false 失败 (例如已满)
-bool OledRegisterInt(const char* label, IntSourceCb callback);
-bool OledRegisterFloat(const char* label, FloatSourceCb callback);
-bool OledRegisterString(const char* label, StringSourceCb callback);
+// 按键事件定义
+typedef enum {
+    OLED_KEY_NEXT,       // 切换选中项/翻页
+    OLED_KEY_ENTER,      // 进入/退出编辑模式
+    OLED_KEY_CHANGE_INC, // 正向修改（短按）
+    OLED_KEY_CHANGE_DEC  // 反向修改（长按）
+} OledKeyEvent;
 
-// 页面控制
-void OledNextPage(void);
-void OledPrevPage(void);
+// 处理按键事件
+void OledHandleKey(OledKeyEvent event);
 
 // 刷新显示 (在任务循环中调用)
 void OledServiceUpdate(void);

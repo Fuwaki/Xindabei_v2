@@ -11,6 +11,18 @@ typedef enum {
 } PIDMode;
 
 typedef struct {
+  float r;  // 速度因子
+  float x1; // 跟踪信号
+  float x2; // 微分信号
+} SimpleTD;
+
+typedef struct {
+  SimpleTD core;
+  uint8_t enable;
+  float prev_derivative; // 用于增量式PID计算 D项增量
+} PID_TD_Context;
+
+typedef struct {
   // 参数
   float kp;
   float ki;
@@ -33,9 +45,13 @@ typedef struct {
   // 模式
   PIDMode mode;
   uint8_t enableD; // 是否启用 D 项
+
+  // TD 微分跟踪器
+  PID_TD_Context td;
 } PIDController;
 
 void PID_Init(PIDController *pid, PIDMode mode, float kp, float ki, float kd, float Kf, float dt);
+void PID_EnableTD(PIDController *pid, float r);
 void PID_SetOutputLimit(PIDController *pid, float out_min, float out_max);
 void PID_SetIntegralLimit(PIDController *pid, float i_min, float i_max);
 void PID_Reset(PIDController *pid);

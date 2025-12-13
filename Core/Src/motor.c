@@ -7,6 +7,7 @@
 #include "stm32f4xx_hal_adc_ex.h"
 #include "stm32f4xx_hal_gpio.h"
 #include "tim.h"
+#include "param_server.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,8 +40,8 @@ static PIDController motor2_current_pid;
 static EncPLL motor1_pll;
 static EncPLL motor2_pll;
 
-static float motor_1_speed_setpoint = 100.0;
-static float motor_2_speed_setpoint = -300.0;
+static float motor_1_speed_setpoint = 0.0;                //左电机
+static float motor_2_speed_setpoint = 0.0;                  //右电机
 
 static int32_t motor_1_current = 0;
 static int32_t motor_1_current_setpoint = 0;
@@ -89,6 +90,12 @@ int32_t GetMotor2Current(void)
 {
     return motor_2_current;
 }
+
+/* 参数服务器回调函数 */
+static float GetMotor1SpeedTarget(void) { return motor_1_speed_setpoint; }
+static float GetMotor2SpeedTarget(void) { return motor_2_speed_setpoint; }
+static float GetMotor1SpeedActual(void) { return motor1_pll.omega; }
+static float GetMotor2SpeedActual(void) { return motor2_pll.omega; }
 
 // 更新电流反馈值 (供中断回调调用)
 void Motor_UpdateCurrentFeedback(uint32_t raw1, uint32_t raw2)
@@ -144,10 +151,10 @@ void MotorInit()
     // error_min: 误差阈值下限 (counts)，小于此值认为噪声
     // error_max: 误差阈值上限 (counts)，大于此值认为运动
     // dt      : 采样周期（由速度环调用频率决定，这里是 0.01s 对应 100Hz）
-    EncPLL_Init(&motor1_pll, 0.5f, 5.0f, 1.3f, 50.0f, 80.0f, 0.01f);
+    EncPLL_Init(&motor1_pll, 0.5f, 5.0f, 1.3f, 1.0f, 3.0f, 0.01f);
     EncPLL_Init(&motor2_pll, 0.5f, 5.0f, 1.3f, 1.0f, 3.0f, 0.01f);
 
-    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.004f, 0.0001f, 0.0f, 0.0015f, 0.01f);
+    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.008f, 0.04f, 0.0002f, 0.001f, 0.01f);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
 
     PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.008f, 0.04f, 0.0002f, 0.001f, 0.01f);
@@ -158,6 +165,18 @@ void MotorInit()
 
     PID_Init(&motor2_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.01f);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.0f);
+
+    /* 注册参数到服务器：电机目标/实际速度都在串口和 OLED 显示 */
+    static ParamDesc motor_params[] = {
+        { .name = "M1_Tgt", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor1SpeedTarget, .read_only = 1, .mask = PARAM_MASK_OLED },
+        { .name = "M2_Tgt", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor2SpeedTarget, .read_only = 1, .mask = PARAM_MASK_OLED },
+        { .name = "M1_Spd", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor1SpeedActual, .read_only = 1, .mask = PARAM_MASK_OLED },
+        { .name = "M2_Spd", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor2SpeedActual, .read_only = 1, .mask = PARAM_MASK_OLED },
+    };
+    for (int i = 0; i < sizeof(motor_params)/sizeof(motor_params[0]); i++) {
+        ParamServer_Register(&motor_params[i]);
+    }
+
     LOG_INFO("MotorInit done");
 }
 
@@ -228,13 +247,13 @@ void CurrentLoopTimerHandler()
 
 void SpeedLoopHandler()
 {
-    static uint32_t tick = 0;
-    tick++;
-    motor_1_speed_setpoint=motor_2_speed_setpoint = 300.0f * sinf((float)tick * 0.05f);
+    // static uint32_t tick = 0;
+    // tick++;
+    // motor_1_speed_setpoint=motor_2_speed_setpoint = 300.0f * sinf((float)tick * 0.05f);
 
     float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 10.0f;
     float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 10.0f;
-    float output_1 = PID_Update_Incremental(&motor1_speed_pid, motor_1_speed_setpoint, speed_1);
+    float output_1 = PID_Update_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
     float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
 
     // // 打印格式：目标速度, 实际速度1, 实际速度2, PID输出1, PID输出2, 编码器1, 观测器误差1, 观测器带宽1

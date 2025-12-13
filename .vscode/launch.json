@@ -4,21 +4,21 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        
-        
         {
-            "cwd": "${workspaceFolder}",
-            "executable": "build/Release/Xindabei_v2.elf",
-            "name": "Debug with ST-Link",
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceFolder}/build/Debug/Xindabei_v2.elf",
+            "name": "Debug with OpenOCD (DAPLink)",
             "request": "launch",
             "type": "cortex-debug",
+            "servertype": "openocd",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/stm32f4x.cfg"
+            ],
+            "searchDir": [],
             "runToEntryPoint": "main",
             "showDevDebugOutput": "none",
-            "servertype": "stlink"
-        }
-        
-
-
-    
+            "preLaunchTask": "CMake: Build Debug"
+        },
     ]
 }

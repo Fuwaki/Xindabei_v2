@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/_intsup.h>
 #include "common.h"
+#include "param_server.h"
 
 static void set_speed_handler(int argc, char *argv[]) {
   if (argc < 2) {
@@ -13,70 +14,101 @@ static void set_speed_handler(int argc, char *argv[]) {
   int value = atoi(argv[1]);
   printf("Speed set to %d\n", value);
 }
-float a=1.0;
-static unsigned short mutable_value_count = 1;
-Value muttable_values[16] = {
-    {"a", &a}
 
-};
-
-static unsigned short print_value_count = 1;
-float *printable_values[16] = {
-    &a
-
-};
 void print_handler() {
-  for (size_t i = 0; i < print_value_count; ++i) {
-    printf(FLOAT_FMT, FLOAT_TO_INT(*printable_values[i]));
-    if (i < print_value_count - 1) {
+  int count = ParamServer_GetCount();
+  int first = 1;
+  for (int i = 0; i < count; ++i) {
+    const ParamDesc *p = ParamServer_GetByIndex(i);
+    if (!p || !(p->mask & PARAM_MASK_SERIAL)) {
+      continue;
+    }
+
+    if (!first) {
       printf(",");
+    }
+    first = 0;
+
+    if (p->type == PARAM_TYPE_FLOAT) {
+      float v = ParamServer_GetValueFloat(p);
+      printf(FLOAT_FMT, FLOAT_TO_INT(v));
     } else {
-      printf("\n");
+      int v = ParamServer_GetValueInt(p);
+      printf("%d", v);
     }
   }
+  printf("\n");
 }
 
 void add_printable_value(const char *name, float *value) {
-  if (print_value_count < 16) {
-    printable_values[print_value_count++] = value;
-  }
+  (void)name;
+  (void)value;
+  /* 保留空实现，兼容旧接口；用户应直接用 ParamServer_Register 配置 printable 标志 */
 }
 
-
 void add_mutable_value(const char *name, float *value) {
-  if (mutable_value_count < 16) {
-    muttable_values[mutable_value_count].name = name;
-    muttable_values[mutable_value_count].value = value;
-    mutable_value_count++;
-  }
+  (void)name;
+  (void)value;
+  /* 保留空实现，兼容旧接口；用户应直接用 ParamServer_Register 配置 read_only=0 */
 }
 
 void var_command_handler(int argc, char *argv[]) {
   if (argc == 1) {
-    // 列出所有可变变量
-    for (size_t i = 0; i < mutable_value_count; i++) {
-      printf("%s = " FLOAT_FMT "\n", muttable_values[i].name, FLOAT_TO_INT(*(muttable_values[i].value)));
+    int count = ParamServer_GetCount();
+    for (int i = 0; i < count; ++i) {
+      const ParamDesc *p = ParamServer_GetByIndex(i);
+      if (!p) continue;
+
+      if (p->type == PARAM_TYPE_FLOAT) {
+        float v = ParamServer_GetValueFloat(p);
+        printf("%s = " FLOAT_FMT "\n", p->name, FLOAT_TO_INT(v));
+      } else {
+        int v = ParamServer_GetValueInt(p);
+        printf("%s = %d\n", p->name, v);
+      }
     }
     return;
   }
+
   const char *var_name = argv[1];
-  for (size_t i = 0; i < mutable_value_count; i++) {
-    if (strcmp(var_name, muttable_values[i].name) == 0) {
-      if (argc == 2) {
-        // 查询变量值
-        printf("%s = " FLOAT_FMT "\n", var_name, FLOAT_TO_INT(*(muttable_values[i].value)));
-      } else if (argc == 3) {
-        // 设置变量值
-        float new_value = atof(argv[2]);
-        *(muttable_values[i].value) = new_value;
-        printf("%s set to " FLOAT_FMT "\n", var_name, FLOAT_TO_INT(new_value));
+  const ParamDesc *p = ParamServer_FindByName(var_name);
+  if (!p) {
+    printf("Unknown variable: %s\n", var_name);
+    return;
+  }
+
+  if (argc == 2) {
+    if (p->type == PARAM_TYPE_FLOAT) {
+      float v = ParamServer_GetValueFloat(p);
+      printf("%s = " FLOAT_FMT "\n", p->name, FLOAT_TO_INT(v));
+    } else {
+      int v = ParamServer_GetValueInt(p);
+      printf("%s = %d\n", p->name, v);
+    }
+  } else if (argc == 3) {
+    if (p->read_only) {
+      printf("%s is read-only\n", p->name);
+      return;
+    }
+
+    if (p->type == PARAM_TYPE_FLOAT) {
+      float v = atof(argv[2]);
+      if (ParamServer_SetValueFloat(p, v)) {
+        printf("%s set to " FLOAT_FMT "\n", p->name, FLOAT_TO_INT(v));
       } else {
         printf("ERR\n");
       }
-      return;
+    } else {
+      int v = atoi(argv[2]);
+      if (ParamServer_SetValueInt(p, v)) {
+        printf("%s set to %d\n", p->name, v);
+      } else {
+        printf("ERR\n");
+      }
     }
+  } else {
+    printf("ERR\n");
   }
-  printf("Unknown variable: %s\n", var_name);
 }
 
 static const unsigned short command_table_count = 2;

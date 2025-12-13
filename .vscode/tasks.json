@@ -14,6 +14,18 @@
             "detail": "CMake 模板 生成 任务"
         },
         {
+            "type": "cmake",
+            "label": "CMake: Build Debug",
+            "command": "build",
+            "targets": [
+                "all"
+            ],
+            "preset": "Debug",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake Debug Build Task"
+        },
+        {
             "label": "flash",
             "dependsOrder": "sequence",
             "dependsOn": [

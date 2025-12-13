@@ -89,15 +89,15 @@ void ADS1220Config(void)
 {
 	unsigned Temp;
 	
-	/* Register 0: MUX_0_G (default), GAIN_1, PGA_BYPASS (Enabled) */
+	/* Register 0: MUX_0_G (default), GAIN_2, PGA_BYPASS (Enabled) */
 	/* Priority on accuracy, Single-ended signals (0-Vref) require PGA Bypass */
-	Temp = ADS1220_MUX_0_G | ADS1220_GAIN_1 | ADS1220_PGA_BYPASS;
+	Temp = ADS1220_MUX_0_G | ADS1220_GAIN_2 | ADS1220_PGA_BYPASS;
    	ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &Temp);
 
 	/* Register 1: DR_600 (600 SPS), MODE_NORMAL, Single-Shot Mode */
 	/* 600 SPS Normal Mode provides ~1.7ms settling time per channel. */
 	/* 4 channels * 1.7ms = 6.8ms < 10ms (100Hz) */
-	Temp = ADS1220_DR_20 | ADS1220_MODE_TURBO;
+	Temp = ADS1220_DR_45 | ADS1220_MODE_TURBO;
    	ADS1220WriteRegister(ADS1220_1_REGISTER, 0x01, &Temp);	/* Register 2: VREF_INT (2.048V), IDAC_OFF */
 	Temp = ADS1220_VREF_INT | ADS1220_IDAC_OFF;
 	ADS1220WriteRegister(ADS1220_2_REGISTER, 0x01, &Temp);

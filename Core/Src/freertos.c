@@ -19,9 +19,10 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
-#include "task.h"
-#include "main.h"
 #include "cmsis_os.h"
+#include "main.h"
+#include "task.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -31,6 +32,7 @@
 #include "meg_adc.h"
 #include "motor.h"
 #include "oled_service.h"
+#include "param_server.h"
 #include "tim.h"
 #include "tof.h"
 #include "track.h"
@@ -39,6 +41,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
 
 /* USER CODE END Includes */
 
@@ -66,64 +69,62 @@ TaskHandle_t AdcCaptureTaskHandle;
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .stack_size = 386 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "defaultTask",
+    .stack_size = 386 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for ToFCapture */
 osThreadId_t ToFCaptureHandle;
 const osThreadAttr_t ToFCapture_attributes = {
-  .name = "ToFCapture",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
+    .name = "ToFCapture",
+    .stack_size = 512 * 4,
+    .priority = (osPriority_t)osPriorityNormal,
 };
 /* Definitions for UartTask */
 osThreadId_t UartTaskHandle;
 const osThreadAttr_t UartTask_attributes = {
-  .name = "UartTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+    .name = "UartTask",
+    .stack_size = 512 * 4,
+    .priority = (osPriority_t)osPriorityLow,
 };
 /* Definitions for MotorSpeedTask */
 osThreadId_t MotorSpeedTaskHandle;
 const osThreadAttr_t MotorSpeedTask_attributes = {
-  .name = "MotorSpeedTask",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityHigh1,
+    .name = "MotorSpeedTask",
+    .stack_size = 256 * 4,
+    .priority = (osPriority_t)osPriorityHigh1,
 };
 /* Definitions for AdcCapture */
 osThreadId_t AdcCaptureHandle;
 const osThreadAttr_t AdcCapture_attributes = {
-  .name = "AdcCapture",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+    .name = "AdcCapture",
+    .stack_size = 512 * 4,
+    .priority = (osPriority_t)osPriorityLow,
 };
 /* Definitions for CarControlTask */
 osThreadId_t CarControlTaskHandle;
 const osThreadAttr_t CarControlTask_attributes = {
-  .name = "CarControlTask",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityAboveNormal,
+    .name = "CarControlTask",
+    .stack_size = 256 * 4,
+    .priority = (osPriority_t)osPriorityAboveNormal,
 };
 /* Definitions for GyroTask */
 osThreadId_t GyroTaskHandle;
 const osThreadAttr_t GyroTask_attributes = {
-  .name = "GyroTask",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal1,
+    .name = "GyroTask",
+    .stack_size = 256 * 4,
+    .priority = (osPriority_t)osPriorityNormal1,
 };
 /* Definitions for TrackTask */
 osThreadId_t TrackTaskHandle;
 const osThreadAttr_t TrackTask_attributes = {
-  .name = "TrackTask",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal4,
+    .name = "TrackTask",
+    .stack_size = 256 * 4,
+    .priority = (osPriority_t)osPriorityNormal4,
 };
 /* Definitions for uartQueue */
 osMessageQueueId_t uartQueueHandle;
-const osMessageQueueAttr_t uartQueue_attributes = {
-  .name = "uartQueue"
-};
+const osMessageQueueAttr_t uartQueue_attributes = {.name = "uartQueue"};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -142,25 +143,33 @@ float GetCpuUsageFloat(void)
     return CalculateCpuUsage();
 }
 
-float GetAdcCh1(void)
-{
-    return MegAdcGetResult().l;
-}
-float GetAdcCh2(void)
-{
-    return MegAdcGetResult().lm;
-}
-float GetAdcCh3(void)
-{
-    return MegAdcGetResult().r;
-}
-float GetAdcCh4(void)
-{
-    return MegAdcGetResult().rm;
-}
 int32_t GetTofDistance(void)
 {
     return TofGetDistance();
+}
+
+/* 注册系统监控参数 */
+void RegisterSystemParams(void)
+{
+    static ParamDesc params[] = {
+        /* 默认：串口 + OLED 都显示 */
+        {.name = "CPU",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetCpuUsageFloat,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED},
+
+        {.name = "TOF",
+         .type = PARAM_TYPE_INT,
+         .ops.i.get = (ParamGetIntCb)GetTofDistance,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED},
+    };
+
+    for (int i = 0; i < sizeof(params) / sizeof(params[0]); i++)
+    {
+        ParamServer_Register(&params[i]);
+    }
 }
 /* USER CODE END FunctionPrototypes */
 
@@ -176,68 +185,68 @@ void TrackTaskFunc(void *argument);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
-  * @brief  FreeRTOS initialization
-  * @param  None
-  * @retval None
-  */
-void MX_FREERTOS_Init(void) {
-  /* USER CODE BEGIN Init */
+ * @brief  FreeRTOS initialization
+ * @param  None
+ * @retval None
+ */
+void MX_FREERTOS_Init(void)
+{
+    /* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+    /* USER CODE END Init */
 
-  /* USER CODE BEGIN RTOS_MUTEX */
+    /* USER CODE BEGIN RTOS_MUTEX */
     /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
+    /* USER CODE END RTOS_MUTEX */
 
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
+    /* USER CODE BEGIN RTOS_SEMAPHORES */
     /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
+    /* USER CODE END RTOS_SEMAPHORES */
 
-  /* USER CODE BEGIN RTOS_TIMERS */
+    /* USER CODE BEGIN RTOS_TIMERS */
     /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
+    /* USER CODE END RTOS_TIMERS */
 
-  /* Create the queue(s) */
-  /* creation of uartQueue */
-  uartQueueHandle = osMessageQueueNew (128, sizeof(uint16_t), &uartQueue_attributes);
+    /* Create the queue(s) */
+    /* creation of uartQueue */
+    uartQueueHandle = osMessageQueueNew(128, sizeof(uint16_t), &uartQueue_attributes);
 
-  /* USER CODE BEGIN RTOS_QUEUES */
+    /* USER CODE BEGIN RTOS_QUEUES */
     /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
+    /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+    /* Create the thread(s) */
+    /* creation of defaultTask */
+    defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
-  /* creation of ToFCapture */
-  ToFCaptureHandle = osThreadNew(TofTask, NULL, &ToFCapture_attributes);
+    /* creation of ToFCapture */
+    ToFCaptureHandle = osThreadNew(TofTask, NULL, &ToFCapture_attributes);
 
-  /* creation of UartTask */
-  UartTaskHandle = osThreadNew(UartTaskFunc, NULL, &UartTask_attributes);
+    /* creation of UartTask */
+    UartTaskHandle = osThreadNew(UartTaskFunc, NULL, &UartTask_attributes);
 
-  /* creation of MotorSpeedTask */
-  MotorSpeedTaskHandle = osThreadNew(MotorSpeedTaskFunc, NULL, &MotorSpeedTask_attributes);
+    /* creation of MotorSpeedTask */
+    MotorSpeedTaskHandle = osThreadNew(MotorSpeedTaskFunc, NULL, &MotorSpeedTask_attributes);
 
-  /* creation of AdcCapture */
-  AdcCaptureHandle = osThreadNew(AdcCaptureFunc, NULL, &AdcCapture_attributes);
+    /* creation of AdcCapture */
+    AdcCaptureHandle = osThreadNew(AdcCaptureFunc, NULL, &AdcCapture_attributes);
 
-  /* creation of CarControlTask */
-  CarControlTaskHandle = osThreadNew(CarControlTaskFunc, NULL, &CarControlTask_attributes);
+    /* creation of CarControlTask */
+    CarControlTaskHandle = osThreadNew(CarControlTaskFunc, NULL, &CarControlTask_attributes);
 
-  /* creation of GyroTask */
-  GyroTaskHandle = osThreadNew(GyroTaskFunc, NULL, &GyroTask_attributes);
+    /* creation of GyroTask */
+    GyroTaskHandle = osThreadNew(GyroTaskFunc, NULL, &GyroTask_attributes);
 
-  /* creation of TrackTask */
-  TrackTaskHandle = osThreadNew(TrackTaskFunc, NULL, &TrackTask_attributes);
+    /* creation of TrackTask */
+    TrackTaskHandle = osThreadNew(TrackTaskFunc, NULL, &TrackTask_attributes);
 
-  /* USER CODE BEGIN RTOS_THREADS */
+    /* USER CODE BEGIN RTOS_THREADS */
     /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
+    /* USER CODE END RTOS_THREADS */
 
-  /* USER CODE BEGIN RTOS_EVENTS */
+    /* USER CODE BEGIN RTOS_EVENTS */
     /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
-
+    /* USER CODE END RTOS_EVENTS */
 }
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -249,41 +258,67 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
+    /* USER CODE BEGIN StartDefaultTask */
     /* Infinite loop */
     OledServiceInit();
-
-    OledRegisterFloat("CPU", GetCpuUsageFloat);
-    OledRegisterFloat("CH1", GetAdcCh1);
-    OledRegisterFloat("CH2", GetAdcCh2);
-    OledRegisterFloat("CH3", GetAdcCh3);
-    OledRegisterFloat("CH4", GetAdcCh4);
-    OledRegisterInt("TOF", GetTofDistance);
+    RegisterSystemParams();
 
     for (;;)
     {
         HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 
-        // 页面切换按钮
+        /* KEY1: Next / Page Down */
         if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
         {
             osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
             {
-                OledNextPage();
-                // 等待松开
+                OledHandleKey(OLED_KEY_NEXT);
                 while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
-                {
                     osDelay(10);
+            }
+        }
+
+        /* KEY2: Enter / Edit Mode */
+        if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+        {
+            osDelay(20);
+            if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+            {
+                OledHandleKey(OLED_KEY_ENTER);
+                while (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
+                    osDelay(10);
+            }
+        }
+
+        /* KEY3: Change Value (short press = INC, long press = DEC) */
+        if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
+        {
+            osDelay(20);
+            if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
+            {
+                /* 短按：先执行一次正向修改 */
+                OledHandleKey(OLED_KEY_CHANGE_INC);
+
+                /* 长按：超过阈值后开始反向连续调节 */
+                int hold_cnt = 0;
+                while (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
+                {
+                    osDelay(50);
+                    hold_cnt++;
+                    if (hold_cnt > 10)
+                    { // ~500ms 后开始以相反方向连续调节
+                        OledHandleKey(OLED_KEY_CHANGE_DEC);
+                    }
                 }
             }
         }
 
-        OledServiceUpdate();
-
-        osDelay(100);
+        // OledServiceUpdate();
+        print_handler();
+        osDelay(50); // 提高刷新率以响应按键
     }
-  /* USER CODE END StartDefaultTask */
+    /* USER CODE END StartDefaultTask */
 }
 
 /* USER CODE BEGIN Header_TofTask */
@@ -295,7 +330,7 @@ void StartDefaultTask(void *argument)
 /* USER CODE END Header_TofTask */
 void TofTask(void *argument)
 {
-  /* USER CODE BEGIN TofTask */
+    /* USER CODE BEGIN TofTask */
     ToFMeasureTaskHandle = xTaskGetCurrentTaskHandle();
     TofInit();
 
@@ -303,7 +338,7 @@ void TofTask(void *argument)
     {
         TofHandler();
     }
-  /* USER CODE END TofTask */
+    /* USER CODE END TofTask */
 }
 
 /* USER CODE BEGIN Header_UartTaskFunc */
@@ -315,8 +350,8 @@ void TofTask(void *argument)
 /* USER CODE END Header_UartTaskFunc */
 void UartTaskFunc(void *argument)
 {
-  /* USER CODE BEGIN UartTaskFunc */
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart_rx_buf, UART_BUF_LEN);
+    /* USER CODE BEGIN UartTaskFunc */
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart6, uart_rx_buf, UART_BUF_LEN);
     uint16_t len;
     while (1)
     {
@@ -325,7 +360,7 @@ void UartTaskFunc(void *argument)
             handle_command(uart_rx_buf, len);
         }
     }
-  /* USER CODE END UartTaskFunc */
+    /* USER CODE END UartTaskFunc */
 }
 
 /* USER CODE BEGIN Header_MotorSpeedTaskFunc */
@@ -337,7 +372,7 @@ void UartTaskFunc(void *argument)
 /* USER CODE END Header_MotorSpeedTaskFunc */
 void MotorSpeedTaskFunc(void *argument)
 {
-  /* USER CODE BEGIN MotorSpeedTaskFunc */
+    /* USER CODE BEGIN MotorSpeedTaskFunc */
     /* Infinite loop */
     MotorInit();
     TickType_t xLast = xTaskGetTickCount();
@@ -348,7 +383,7 @@ void MotorSpeedTaskFunc(void *argument)
         SpeedLoopHandler();
         vTaskDelayUntil(&xLast, freq);
     }
-  /* USER CODE END MotorSpeedTaskFunc */
+    /* USER CODE END MotorSpeedTaskFunc */
 }
 
 /* USER CODE BEGIN Header_AdcCaptureFunc */
@@ -360,7 +395,7 @@ void MotorSpeedTaskFunc(void *argument)
 /* USER CODE END Header_AdcCaptureFunc */
 void AdcCaptureFunc(void *argument)
 {
-  /* USER CODE BEGIN AdcCaptureFunc */
+    /* USER CODE BEGIN AdcCaptureFunc */
     AdcCaptureTaskHandle = xTaskGetCurrentTaskHandle();
     MegAdcInit();
     /* Infinite loop */
@@ -368,7 +403,7 @@ void AdcCaptureFunc(void *argument)
     {
         MegAdcHandler();
     }
-  /* USER CODE END AdcCaptureFunc */
+    /* USER CODE END AdcCaptureFunc */
 }
 
 /* USER CODE BEGIN Header_CarControlTaskFunc */
@@ -380,7 +415,7 @@ void AdcCaptureFunc(void *argument)
 /* USER CODE END Header_CarControlTaskFunc */
 void CarControlTaskFunc(void *argument)
 {
-  /* USER CODE BEGIN CarControlTaskFunc */
+    /* USER CODE BEGIN CarControlTaskFunc */
     /* Infinite loop */
     CarControlInit();
     for (;;)
@@ -388,7 +423,7 @@ void CarControlTaskFunc(void *argument)
         CarControlHandler();
         osDelay(10);
     }
-  /* USER CODE END CarControlTaskFunc */
+    /* USER CODE END CarControlTaskFunc */
 }
 
 /* USER CODE BEGIN Header_GyroTaskFunc */
@@ -400,7 +435,7 @@ void CarControlTaskFunc(void *argument)
 /* USER CODE END Header_GyroTaskFunc */
 void GyroTaskFunc(void *argument)
 {
-  /* USER CODE BEGIN GyroTaskFunc */
+    /* USER CODE BEGIN GyroTaskFunc */
     /* Infinite loop */
     GyroInit();
     for (;;)
@@ -408,7 +443,7 @@ void GyroTaskFunc(void *argument)
         GyroHandler();
         osDelay(10);
     }
-  /* USER CODE END GyroTaskFunc */
+    /* USER CODE END GyroTaskFunc */
 }
 
 /* USER CODE BEGIN Header_TrackTaskFunc */
@@ -420,7 +455,7 @@ void GyroTaskFunc(void *argument)
 /* USER CODE END Header_TrackTaskFunc */
 void TrackTaskFunc(void *argument)
 {
-  /* USER CODE BEGIN TrackTaskFunc */
+    /* USER CODE BEGIN TrackTaskFunc */
     /* Infinite loop */
     TrackInit();
     for (;;)
@@ -428,7 +463,7 @@ void TrackTaskFunc(void *argument)
         TrackHandler();
         osDelay(20);
     }
-  /* USER CODE END TrackTaskFunc */
+    /* USER CODE END TrackTaskFunc */
 }
 
 /* Private application code --------------------------------------------------*/
@@ -488,4 +523,3 @@ float CalculateCpuUsage(void)
     return cpuUsage;
 }
 /* USER CODE END Application */
-

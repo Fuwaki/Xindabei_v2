@@ -105,6 +105,9 @@ void HardFault_Handler(void)
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    // 如果进入HardFault，翻转LED1指示错误
+    HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+    for(volatile int i=0; i<1000000; i++); // 简单的延时
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
@@ -383,12 +386,12 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
     if (hadc->Instance == ADC1)
     {
-        // 读取ADC注入组转换结果
-        uint32_t raw1 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
-        uint32_t raw2 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
+        // // 读取ADC注入组转换结果
+        // uint32_t raw1 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1);
+        // uint32_t raw2 = HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2);
 
-        // 调用motor模块的接口更新电流反馈值 (包含滤波处理)
-        Motor_UpdateCurrentFeedback(raw1, raw2);
+        // // 调用motor模块的接口更新电流反馈值 (包含滤波处理)
+        // Motor_UpdateCurrentFeedback(raw1, raw2);
     }
 }
 /* USER CODE END 1 */

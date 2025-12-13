@@ -1,6 +1,13 @@
 #include "pid.h"
+#include <math.h>
 
 static inline float clampf(float v, float mn, float mx) { return v < mn ? mn : (v > mx ? mx : v); }
+
+static float SimpleTD_Update(SimpleTD *td, float v, float dt) {
+  td->x1 += td->x2 * dt;
+  td->x2 += (-td->r * (td->x1 - v) - 2.0f * sqrtf(td->r) * td->x2) * dt;
+  return td->x2;
+}
 
 void PID_Init(PIDController *pid, PIDMode mode, float kp, float ki, float kd, float Kf, float dt) {
   pid->kp = kp;
@@ -18,6 +25,19 @@ void PID_Init(PIDController *pid, PIDMode mode, float kp, float ki, float kd, fl
   pid->integral_min = -1e9f;
   pid->integral_max = 1e9f;
   pid->enableD = (kd != 0.0f) ? 1 : 0;
+  
+  pid->td.enable = 0;
+  pid->td.core.r = 1000.0f;
+  pid->td.core.x1 = 0.0f;
+  pid->td.core.x2 = 0.0f;
+  pid->td.prev_derivative = 0.0f;
+}
+
+void PID_EnableTD(PIDController *pid, float r) {
+  pid->td.enable = 1;
+  pid->td.core.r = r;
+  pid->td.core.x1 = 0.0f;
+  pid->td.core.x2 = 0.0f;
 }
 
 void PID_SetOutputLimit(PIDController *pid, float out_min, float out_max) {
@@ -35,13 +55,25 @@ void PID_Reset(PIDController *pid) {
   pid->prev_error = 0.0f;
   pid->prev_error2 = 0.0f;
   pid->output = 0.0f;
+  pid->td.core.x1 = 0.0f;
+  pid->td.core.x2 = 0.0f;
+  pid->td.prev_derivative = 0.0f;
 }
 
 float PID_Update_Positional(PIDController *pid, float setpoint, float measurement) {
   float err = setpoint - measurement;
   pid->integral += err * pid->dt;
   pid->integral = clampf(pid->integral, pid->integral_min, pid->integral_max);
-  float derivative = pid->enableD ? (err - pid->prev_error) / pid->dt : 0.0f;
+  
+  float derivative = 0.0f;
+  if (pid->enableD) {
+    if (pid->td.enable) {
+      derivative = SimpleTD_Update(&pid->td.core, err, pid->dt);
+    } else {
+      derivative = (err - pid->prev_error) / pid->dt;
+    }
+  }
+  
   float out = pid->kp * err + pid->ki * pid->integral + pid->kd * derivative;
   out = clampf(out, pid->out_min, pid->out_max);
   pid->prev_error2 = pid->prev_error;
@@ -57,7 +89,14 @@ float PID_Update_Incremental(PIDController *pid, float setpoint, float measureme
   // 增量式 PID 差分离散：Δu = Kp*(e - e1) + Ki*e*dt + Kd*(e - 2e1 + e2)/dt
   float delta = pid->kp * (e - e1) + pid->ki * e * pid->dt;
   if (pid->enableD) {
-    float d_term = pid->kd * (e - 2.0f * e1 + e2) / pid->dt;
+    float d_term;
+    if (pid->td.enable) {
+      float derivative = SimpleTD_Update(&pid->td.core, e, pid->dt);
+      d_term = pid->kd * (derivative - pid->td.prev_derivative);
+      pid->td.prev_derivative = derivative;
+    } else {
+      d_term = pid->kd * (e - 2.0f * e1 + e2) / pid->dt;
+    }
     delta += d_term;
   }
   float out = pid->output + delta;
