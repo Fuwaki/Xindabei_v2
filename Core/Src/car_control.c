@@ -1,5 +1,5 @@
 #include "car_control.h"
-#include "gyro.h"
+// #include "gyro.h"
 #include "log.h"
 #include "motor.h"
 #include "pid.h"

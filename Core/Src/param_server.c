@@ -118,3 +118,14 @@ int ParamServer_GetValueInt(const ParamDesc *p)
     }
     return 0;
 }
+
+const char* ParamServer_GetString(const ParamDesc *p)
+{
+    if (p == NULL) {
+        return "?";
+    }
+    if (p->type == PARAM_TYPE_ENUM && p->ops.e.getString) {
+        return p->ops.e.getString();
+    }
+    return "?";
+}

@@ -12,6 +12,11 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
+# Enable C++ support
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS ON)
+
 
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -28,8 +33,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
 
-# Enable CMake support for ASM and C languages
-enable_language(C ASM)
+# Enable CMake support for ASM, C and C++ languages
+enable_language(C ASM CXX)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
@@ -46,11 +51,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/uart_command.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ADS1220.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/tof.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/track.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/track.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/car_control.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/gyro.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/imu.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/meg_adc.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/icm42688.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/lsm6ds3_reg.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ssd1306.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ssd1306_fonts.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/oled_service.c

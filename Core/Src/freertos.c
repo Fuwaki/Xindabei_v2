@@ -28,7 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "car_control.h"
 #include "common.h"
-#include "gyro.h"
+#include "imu.h"
 #include "meg_adc.h"
 #include "motor.h"
 #include "oled_service.h"
@@ -273,48 +273,49 @@ void StartDefaultTask(void *argument)
             osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
             {
-                OledHandleKey(OLED_KEY_NEXT);
-                while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+                uint32_t pressTime = 0;
+                bool longPressHandled = false;
+                
+                while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
                     osDelay(10);
+                    pressTime += 10;
+                    if (pressTime > 1000 && !longPressHandled) { // 1s long press
+                        OledServiceToggleDisplay();
+                        longPressHandled = true;
+                    }
+                }
+                
+                if (!longPressHandled) {
+                    OledHandleKey(OLED_KEY_NEXT);
+                }
             }
         }
 
-        /* KEY2: Enter / Edit Mode */
+        /* KEY2: Start Car */
         if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
         {
-            osDelay(20);
+            osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
             {
-                OledHandleKey(OLED_KEY_ENTER);
+                TrackSetCommand(TRACK_CMD_START);
                 while (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
                     osDelay(10);
             }
         }
 
-        /* KEY3: Change Value (short press = INC, long press = DEC) */
+        /* KEY3: Reset State Machine */
         if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
         {
-            osDelay(20);
+            osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
             {
-                /* 短按：先执行一次正向修改 */
-                OledHandleKey(OLED_KEY_CHANGE_INC);
-
-                /* 长按：超过阈值后开始反向连续调节 */
-                int hold_cnt = 0;
+                TrackSetCommand(TRACK_CMD_RESET);
                 while (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
-                {
-                    osDelay(50);
-                    hold_cnt++;
-                    if (hold_cnt > 10)
-                    { // ~500ms 后开始以相反方向连续调节
-                        OledHandleKey(OLED_KEY_CHANGE_DEC);
-                    }
-                }
+                    osDelay(10);
             }
         }
 
-        // OledServiceUpdate();
+        OledServiceUpdate();
         print_handler();
         osDelay(50); // 提高刷新率以响应按键
     }
@@ -437,10 +438,10 @@ void GyroTaskFunc(void *argument)
 {
     /* USER CODE BEGIN GyroTaskFunc */
     /* Infinite loop */
-    GyroInit();
+    IMUInit();
     for (;;)
     {
-        GyroHandler();
+        IMUHandler();
         osDelay(10);
     }
     /* USER CODE END GyroTaskFunc */

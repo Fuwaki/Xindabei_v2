@@ -11,6 +11,7 @@ extern "C" {
 typedef enum {
     PARAM_TYPE_FLOAT = 0,
     PARAM_TYPE_INT   = 1,
+    PARAM_TYPE_ENUM  = 2,
 } ParamType;
 
 /* 回调函数定义 */
@@ -18,6 +19,7 @@ typedef float (*ParamGetFloatCb)(void);
 typedef void  (*ParamSetFloatCb)(float val);
 typedef int   (*ParamGetIntCb)(void);
 typedef void  (*ParamSetIntCb)(int val);
+typedef const char* (*ParamGetStringCb)(void);
 
 typedef struct {
     const char *name;      /* 参数名字 */
@@ -33,6 +35,11 @@ typedef struct {
             ParamGetIntCb get;
             ParamSetIntCb set;
         } i;
+        struct {
+            ParamGetIntCb get;
+            ParamSetIntCb set;
+            ParamGetStringCb getString;
+        } e;
     } ops;
 
     float       step;      /* 调参步长 */
@@ -48,6 +55,9 @@ typedef enum {
 
 /* 注册一个参数 */
 bool ParamServer_Register(const ParamDesc *desc);
+
+/* 获取枚举/字符串值 */
+const char* ParamServer_GetString(const ParamDesc *p);
 
 /* 通过名字查找参数 */
 const ParamDesc *ParamServer_FindByName(const char *name);
