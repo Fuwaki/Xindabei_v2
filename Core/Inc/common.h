@@ -41,3 +41,8 @@ static inline char* float_to_str(float f) {
 
 #define FLOAT_TO_INT(x) float_to_str(x)
 #define FLOAT_FMT "%s"
+
+// 浮点数符号函数
+#define SIGN(x) ((x > 0) ? 1.0f : ((x < 0) ? -1.0f : 0.0f))
+// 限幅函数
+#define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))

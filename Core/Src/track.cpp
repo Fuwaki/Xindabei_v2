@@ -130,22 +130,22 @@ class TrackingState : public TrackStateBase
         ctx.trackOutput = PID_Update_Positional(&ctx.pid, 0.0f, ctx.trackErr);
         ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
 
-        // 2. 避障检测
-        if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
-        {
-            return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        }
+        // // 2. 避障检测
+        // if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
+        // {
+        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        // }
 
-        // 3. 环岛检测
-        if (Detection::IsRingDetected(ctx))
-        {
-            if ((m_timer += dt) >= Config::RING_DETECT_MS)
-                return TRACK_STATE_PRE_RING;
-        }
-        else
-        {
-            m_timer = 0;
-        }
+        // // 3. 环岛检测
+        // if (Detection::IsRingDetected(ctx))
+        // {
+        //     if ((m_timer += dt) >= Config::RING_DETECT_MS)
+        //         return TRACK_STATE_PRE_RING;
+        // }
+        // else
+        // {
+        //     m_timer = 0;
+        // }
         return TRACK_STATE_TRACKING;
     }
 

@@ -58,3 +58,7 @@ void Motor_UpdateCurrentFeedback(uint32_t raw1, uint32_t raw2);
 // 获取滤波后的电流值
 int32_t GetMotor1Current(void);
 int32_t GetMotor2Current(void);
+
+// 获取电机速度 (单位: 与SetTargetMotorSpeed对应)
+float Motor_GetSpeed1(void);
+float Motor_GetSpeed2(void);

@@ -91,6 +91,16 @@ int32_t GetMotor2Current(void)
     return motor_2_current;
 }
 
+float Motor_GetSpeed1(void)
+{
+    return motor1_pll.omega / 10.0f;
+}
+
+float Motor_GetSpeed2(void)
+{
+    return motor2_pll.omega / 10.0f;
+}
+
 /* 参数服务器回调函数 */
 static float GetMotor1SpeedTarget(void) { return motor_1_speed_setpoint; }
 static float GetMotor2SpeedTarget(void) { return motor_2_speed_setpoint; }
