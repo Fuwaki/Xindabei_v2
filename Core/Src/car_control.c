@@ -1,5 +1,6 @@
 #include "car_control.h"
 // #include "gyro.h"
+#include "imu.h"
 #include "log.h"
 #include "motor.h"
 #include "pid.h"
@@ -14,34 +15,35 @@ static SCurve speed_scurve;
 void CarControlInit()
 {
     LOG_INFO("CarControlInit start");
-    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 0.1, 0.1, 0.0, 0.1, 0.1); // 角速度环使用ki 不要上d
-    SCurve_Init(&speed_scurve, 3.5, 3.f, 8.f, 10.f, 50.f);
+    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 2.7, 0.3, 0.2, 2.9, 0.01); // 角速度环使用ki 不要上d
+    PID_EnableTD(&angular_velocity_pid, 0.2);
+    PID_SetIntegralLimit(&angular_velocity_pid, -10.0, 10.0);    
+    SCurve_Init(&speed_scurve, 30.0f, 10.f, 8.f, 10.f, 50.f);
     LOG_INFO("CarControlInit done");
 }
 
 void CarControlHandler()
 {
-    // gyro_data data = GyroGetGyroData();
+    imu_data ImuData=IMUGetData();
     // // TODO: 增加前馈
     // // TODO: 限幅, target_angular_veloci
-    // // TODO: 方向矫正
-    // float angular_velocity_output = PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, data.yaw);
-    // float angular_velocity_output = 0.0;
+    // // TODO: 方向矫正 
+    float angular_velocity_output = PID_Update_Positional(&angular_velocity_pid, target_angular_velocity,-ImuData.gyro.roll);
     // //正为顺时针
     //
     // TODO: 设计角速度环的调用频率
     //
-    target_velocity = SCurve_Update(&speed_scurve, 0.01f); // 10ms调用一次
+    target_velocity = -SCurve_Update(&speed_scurve, 0.05f); // 10ms调用一次
 
-    float angular_velocity_output = target_angular_velocity; // 先用开环
+    // float angular_velocity_output = target_angular_velocity; // 先用开环
     float left_motor_speed = target_velocity + angular_velocity_output;
     float right_motor_speed = target_velocity - angular_velocity_output;
     // //设置电机速度
-    SetTargetMotorSpeed((int32_t)(left_motor_speed * 100), (int32_t)(right_motor_speed * 100));
+    SetTargetMotorSpeed(left_motor_speed , right_motor_speed );
 }
 void SetTargetCarStatus(float velocity, float angular_velocity)
 {
-    LOG_DEBUG("SetTargetCarStatus v=%.2f ang=%.2f", velocity, angular_velocity);
+    // LOG_DEBUG("SetTargetCarStatus v=%.2f ang=%.2f", velocity, angular_velocity);
     SCurve_SetTarget(&speed_scurve, velocity);
     target_angular_velocity = angular_velocity;
 }

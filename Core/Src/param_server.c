@@ -1,7 +1,7 @@
 #include "param_server.h"
 #include <string.h>
 
-#define MAX_PARAMS 32
+#define MAX_PARAMS 64
 
 static ParamDesc s_params[MAX_PARAMS];
 static uint8_t   s_paramCount = 0;

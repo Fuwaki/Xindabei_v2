@@ -32,6 +32,10 @@
 int __io_putchar(int ch)
 {
     // 使用阻塞式发送带超时，防止DMA发送栈变量地址导致的乱码和丢包
+    if (ch == '\n') {
+        uint8_t cr = '\r';
+        HAL_UART_Transmit(&huart6, &cr, 1, 10);
+    }
     HAL_UART_Transmit(&huart6, (uint8_t *)&ch, 1, 10);
     return ch;
 }
@@ -85,8 +89,12 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
   (void)file;
-  // 防止串口故障导致死锁，使用10ms超时
-  HAL_UART_Transmit(&huart6, (uint8_t*)ptr, len, 10);
+  int DataIdx;
+
+  for (DataIdx = 0; DataIdx < len; DataIdx++)
+  {
+    __io_putchar(*ptr++);
+  }
   return len;
 }
 

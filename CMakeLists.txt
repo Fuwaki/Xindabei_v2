@@ -60,7 +60,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ssd1306_fonts.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/oled_service.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/param_server.c
-
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/s_curve.c
 
     )
 

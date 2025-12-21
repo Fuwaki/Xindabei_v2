@@ -93,19 +93,19 @@ int32_t GetMotor2Current(void)
 
 float Motor_GetSpeed1(void)
 {
-    return motor1_pll.omega / 10.0f;
+    return motor1_pll.omega / 100.0f;
 }
 
 float Motor_GetSpeed2(void)
 {
-    return motor2_pll.omega / 10.0f;
+    return motor2_pll.omega / 100.0f;
 }
 
 /* 参数服务器回调函数 */
 static float GetMotor1SpeedTarget(void) { return motor_1_speed_setpoint; }
 static float GetMotor2SpeedTarget(void) { return motor_2_speed_setpoint; }
-static float GetMotor1SpeedActual(void) { return motor1_pll.omega; }
-static float GetMotor2SpeedActual(void) { return motor2_pll.omega; }
+static float GetMotor1SpeedActual(void) { return motor1_pll.omega/100.0; }
+static float GetMotor2SpeedActual(void) { return motor2_pll.omega/100.0; }
 
 // 更新电流反馈值 (供中断回调调用)
 void Motor_UpdateCurrentFeedback(uint32_t raw1, uint32_t raw2)
@@ -161,20 +161,22 @@ void MotorInit()
     // error_min: 误差阈值下限 (counts)，小于此值认为噪声
     // error_max: 误差阈值上限 (counts)，大于此值认为运动
     // dt      : 采样周期（由速度环调用频率决定，这里是 0.01s 对应 100Hz）
-    EncPLL_Init(&motor1_pll, 0.5f, 5.0f, 1.3f, 1.0f, 3.0f, 0.01f);
-    EncPLL_Init(&motor2_pll, 0.5f, 5.0f, 1.3f, 1.0f, 3.0f, 0.01f);
+    EncPLL_Init(&motor1_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
+    EncPLL_Init(&motor2_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
 
-    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.008f, 0.04f, 0.0002f, 0.001f, 0.01f);
+    // PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.03f, 0.01f, 0.0002f, 0.0015f, 0.01f);
+    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.1f, 0.07f, 0.0f, 0.012f, 0.005f);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
+    // PID_EnableTD(&motor1_speed_pid,  0.1);
 
-    PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.008f, 0.04f, 0.0002f, 0.001f, 0.01f);
-    PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
+    PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.1f, 0.07f, 0.0f, 0.012f, 0.005f);
+    PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f);
 
-    PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.01f);
-    PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.0f);
+    PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.005f);
+    PID_SetOutputLimit(&motor1_current_pid, -1.f, 1.0f);
 
-    PID_Init(&motor2_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.01f);
-    PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.0f);
+    PID_Init(&motor2_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.005f);
+    PID_SetOutputLimit(&motor2_current_pid, -1.f, 1.0f);
 
     /* 注册参数到服务器：电机目标/实际速度都在串口和 OLED 显示 */
     static ParamDesc motor_params[] = {
@@ -259,17 +261,22 @@ void SpeedLoopHandler()
 {
     // static uint32_t tick = 0;
     // tick++;
-    // motor_1_speed_setpoint=motor_2_speed_setpoint = 300.0f * sinf((float)tick * 0.05f);
+    // motor_1_speed_setpoint=motor_2_speed_setpoint = 50.0f * sinf((float)tick * 0.05f);
+    // motor_1_speed_setpoint=motor_2_speed_setpoint=20.0;
 
-    float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 10.0f;
-    float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 10.0f;
-    float output_1 = PID_Update_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
-    float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+    float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 100.0f;
+    float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 100.0f;
+    // float output_1 = PID_Update_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
+    // float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+    float output_1 = 0.4;
+    float output_2=0.3;
 
-    // // 打印格式：目标速度, 实际速度1, 实际速度2, PID输出1, PID输出2, 编码器1, 观测器误差1, 观测器带宽1
-    // printf(FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT ",%d\n",
-    //        FLOAT_TO_INT(motor_2_speed_setpoint), FLOAT_TO_INT(speed_1), FLOAT_TO_INT(speed_2), FLOAT_TO_INT(output_1),
-    //        FLOAT_TO_INT(output_2), (uint32_t)Get_Encoder2_Count());
+    // printf("" FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "\n",
+    //        float_to_str(speed_1), float_to_str(speed_2), float_to_str(motor1_pll.debug_error),
+    //        float_to_str(motor2_pll.debug_error),float_to_str(output_1),float_to_str(output_2),
+    //        float_to_str(motor_1_speed_setpoint), float_to_str(motor_2_speed_setpoint)
+    //        );
+
 
 #if USE_SPEED_LOOP_ONLY
     // 直接将速度环PID输出作为PWM占空比应用

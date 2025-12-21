@@ -41,6 +41,13 @@ void SCurve_Init(SCurve *handle, float max_v, float max_a, float max_d, float je
 void SCurve_SetTarget(SCurve *handle, float target);
 
 /**
+ * @brief 获取当前规划的加速度 (可用于前馈控制)
+ * @param handle 对象指针
+ * @return float 当前加速度 m/s^2
+ */
+float SCurve_GetAccel(SCurve *handle);
+
+/**
  * @brief 核心计算函数 (必须在定时中断中调用，保证dt恒定)
  * @param handle 对象指针
  * @param dt_seconds 采样周期 (例如 10ms = 0.01f)

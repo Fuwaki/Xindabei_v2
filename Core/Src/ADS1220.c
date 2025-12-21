@@ -91,7 +91,7 @@ void ADS1220Config(void)
 	
 	/* Register 0: MUX_0_G (default), GAIN_2, PGA_BYPASS (Enabled) */
 	/* Priority on accuracy, Single-ended signals (0-Vref) require PGA Bypass */
-	Temp = ADS1220_MUX_0_G | ADS1220_GAIN_2 | ADS1220_PGA_BYPASS;
+	Temp = ADS1220_MUX_0_G | ADS1220_GAIN_1 | ADS1220_PGA_BYPASS;
    	ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &Temp);
 
 	/* Register 1: DR_600 (600 SPS), MODE_NORMAL, Single-Shot Mode */
@@ -156,20 +156,14 @@ void ADS1220AssertCS( int fAssert)
 }
 void ADS1220SendByte(unsigned char Byte)
 {
-	if (HAL_SPI_Transmit(ADS1220_SPI_HANDLE, &Byte, 1U, ADS1220_SPI_TIMEOUT) != HAL_OK)
-	{
-		Error_Handler();
-	}
+	HAL_SPI_Transmit(ADS1220_SPI_HANDLE, &Byte, 1U, ADS1220_SPI_TIMEOUT);
 }
 unsigned char ADS1220ReceiveByte(void)
 {
 	uint8_t tx = 0xffU;
 	uint8_t rx = 0U;
 
-	if (HAL_SPI_TransmitReceive(ADS1220_SPI_HANDLE, &tx, &rx, 1U, ADS1220_SPI_TIMEOUT) != HAL_OK)
-	{
-		Error_Handler();
-	}
+	HAL_SPI_TransmitReceive(ADS1220_SPI_HANDLE, &tx, &rx, 1U, ADS1220_SPI_TIMEOUT);
 
 	return rx;
 }

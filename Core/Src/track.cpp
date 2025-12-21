@@ -1,9 +1,11 @@
 #include "track.h"
+#include "common.h"
 #include "fsm.hpp"
 #include <cmath>
 
 extern "C"
 {
+#include "main.h" // Add this
 #include "car_control.h"
 #include "imu.h"
 #include "log.h"
@@ -11,6 +13,7 @@ extern "C"
 #include "param_server.h"
 #include "pid.h"
 #include "tof.h"
+#include "oled_service.h"
 }
 
 // ============================================================================
@@ -28,7 +31,7 @@ constexpr float VEL_RING = 1.5f;
 constexpr float ANG_RING = 0.8f;
 constexpr float VEL_EXIT = 2.0f;
 constexpr float ANG_EXIT = -0.5f;
-constexpr float VEL_TRACKING = 3.0f;
+constexpr float VEL_TRACKING = 40.0f;
 
 constexpr float ROLL_OVER_ANGLE = 45.0f;
 
@@ -39,7 +42,7 @@ constexpr float ANG_OBSTACLE = 1.5f;        // 半圆角速度
 constexpr uint32_t OBSTACLE_TIME_MS = 2000; // 避障动作持续时间
 
 // 出线检测
-constexpr float OUT_OF_LINE_THRESHOLD = 0.5f;
+constexpr float OUT_OF_LINE_THRESHOLD = 0.005f;
 } // namespace Config
 
 // ============================================================================
@@ -59,6 +62,7 @@ struct TrackContext
 
     // 安全检测
     uint32_t safetyTimer = 0;
+    bool safetyCheckEnabled = true;  // 安全检测开关，默认开启
 
     // 命令缓冲
     bool hasCmd = false;
@@ -97,10 +101,10 @@ class StopState : public TrackStateBase
   public:
     void Enter(TrackContext &ctx) override
     {
-        ctx.SetCarStatus(0, 0);
     }
-    TrackState Update(TrackContext &, uint32_t) override
+    TrackState Update(TrackContext &ctx , uint32_t) override
     {
+        ctx.SetCarStatus(0, 5.0);
         return TRACK_STATE_STOP;
     }
     const char *Name() const override
@@ -121,14 +125,23 @@ class TrackingState : public TrackStateBase
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         // 1. 循迹控制
-        auto res = MegAdcGetResult();
+        auto res = MegAdcGetCalibratedResult();
         float denom = ctx.trackA * (res.l + res.r) + ctx.trackB * (res.lm + res.rm);
 
         ctx.trackErr =
-            (fabsf(denom) > 1e-5f) ? (ctx.trackA * (res.l - res.r) + ctx.trackB * (res.lm - res.rm)) / denom : 0.0f;
+            std::isnan(denom) ? 0.0f : (ctx.trackA * (res.l - res.r) + ctx.trackB * (res.lm - res.rm)) / denom;
+        // LOG_INFO("%s\n",float_to_str(ctx.trackErr));        
 
+        constexpr float A = 1.0f, B = 1.1f;
+        ctx.trackErr = A * ctx.trackErr + B * pow(ctx.trackErr, 3.0); // 误差整形
+
+        // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
+        ctx.trackErr=Car_GetTargetVelocity()<20.0?ctx.trackErr:ctx.trackErr/Car_GetTargetVelocity();
+        
         ctx.trackOutput = PID_Update_Positional(&ctx.pid, 0.0f, ctx.trackErr);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
+        ctx.SetCarStatus(Config::VEL_TRACKING, -ctx.trackOutput);
+        // ctx.SetCarStatus(0.0, 0.0);
+
 
         // // 2. 避障检测
         // if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
@@ -306,8 +319,8 @@ extern "C"
 
         // 初始化PID
         auto &ctx = s_fsm.GetContext();
-        PID_Init(&ctx.pid, PID_MODE_POSITIONAL, 0.85f, 0.0f, 0.0f, 0.0f, 0.1f);
-        PID_SetOutputLimit(&ctx.pid, -2.0f, 2.0f);
+        PID_Init(&ctx.pid, PID_MODE_POSITIONAL, 25.05f, 0.0f, 0.0f, 0.0f, 0.1f);
+        PID_SetOutputLimit(&ctx.pid, -20.0f, 20.0f);
 
         // 注册参数
         RegisterParameters();
@@ -318,7 +331,7 @@ extern "C"
 
     void TrackHandler(void)
     {
-        uint32_t dt = 20; // 假设调用周期为20ms
+        uint32_t dt = 10; // 假设调用周期为10ms
         HandleCommand();
         if (CheckSafety(dt))
         {
@@ -365,16 +378,20 @@ static void HandleCommand()
         return;
     ctx.hasCmd = false;
 
+    LOG_INFO("Cmd: %d", ctx.pendingCmd);
+
     switch (ctx.pendingCmd)
     {
     case TRACK_CMD_START:
         if (s_fsm.GetCurrentStateID() == TRACK_STATE_STOP)
         {
+            LOG_INFO("Start Tracking");
             s_fsm.ChangeState(TRACK_STATE_TRACKING);
         }
         break;
     case TRACK_CMD_STOP:
     case TRACK_CMD_RESET:
+        LOG_INFO("Stop/Reset");
         s_fsm.ChangeState(TRACK_STATE_STOP);
         break;
     }
@@ -383,13 +400,27 @@ static void HandleCommand()
 static bool CheckSafety(uint32_t dt)
 {
     auto &ctx = s_fsm.GetContext();
+    
+    // 如果安全检测被禁用，直接返回false
+    if (!ctx.safetyCheckEnabled) {
+        return false;
+    }
+    
+    bool hasEmergency = false;
 
     // 1. 出线检测
     auto adc = MegAdcGetResult();
     float sum = adc.l + adc.r + adc.lm + adc.rm;
     if (sum < ctx.outOfLineThreshold)
     {
-        return true;
+        static uint32_t lastLog = 0;
+        if (HAL_GetTick() - lastLog > 1000) {
+             LOG_WARN("Safety: Out of line! Sum: %.2f", sum);
+             lastLog = HAL_GetTick();
+        }
+        // 触发紧急情况显示 - 丢线
+        OledServiceSetEmergency(OLED_EMERGENCY_OUT_OF_LINE, "OUT OF LINE!");
+        hasEmergency = true;
     }
 
     // 2. 翻车检测
@@ -404,15 +435,41 @@ static bool CheckSafety(uint32_t dt)
         if (ctx.safetyTimer >= Config::ROLL_OVER_MS)
         {
             LOG_WARN("ROLL OVER DETECTED!");
+            // 触发紧急情况显示 - 翻车
+            OledServiceSetEmergency(OLED_EMERGENCY_ROLL_OVER, "ROLL OVER!");
             ctx.safetyTimer = 0;
-            return true;
+            hasEmergency = true;
         }
     }
     else
     {
         ctx.safetyTimer = 0;
     }
-    return false;
+    
+    // 只有在没有检测到任何紧急情况时才清除紧急显示
+    if (!hasEmergency) {
+        OledServiceClearEmergency();
+    }
+    
+    return hasEmergency;
+}
+
+// 安全检测开关功能实现
+void TrackSetSafetyCheckEnabled(bool enabled)
+{
+    auto &ctx = s_fsm.GetContext();
+    ctx.safetyCheckEnabled = enabled;
+    
+    // 如果禁用安全检测，清除当前的紧急显示
+    if (!enabled) {
+        OledServiceClearEmergency();
+    }
+}
+
+bool TrackIsSafetyCheckEnabled(void)
+{
+    auto &ctx = s_fsm.GetContext();
+    return ctx.safetyCheckEnabled;
 }
 
 static void RegisterParameters()

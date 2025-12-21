@@ -10,7 +10,7 @@ void SCurve_Init(SCurve *handle, float max_v, float max_a, float max_d, float je
     handle->target_speed  = 0.0f;    
     // 加载参数
     handle->max_speed = max_v;
-    handle->min_speed = 0.1f; // 默认给个很小的起步速度，防止完全死区
+    handle->min_speed = 0.1f; // 保留字段但暂不使用
     
     handle->max_accel = max_a;
     handle->max_decel = max_d;
@@ -24,6 +24,10 @@ void SCurve_SetTarget(SCurve *handle, float target) {
     handle->target_speed = CLAMP(target, 0.0f, handle->max_speed);
 }
 
+float SCurve_GetAccel(SCurve *handle) {
+    return handle->current_accel;
+}
+
 void SCurve_Reset(SCurve *handle) {
     handle->current_speed = 0.0f;
     handle->current_accel = 0.0f;
@@ -35,15 +39,23 @@ float SCurve_Update(SCurve *handle, float dt) {
     float v_err = handle->target_speed - handle->current_speed;
     
     // 如果误差极小，直接锁定（防止末端抖动）
-    if (fabsf(v_err) < 0.05f) {
+    // 减小死区范围，提高精度
+    if (fabsf(v_err) < 0.01f) {
         handle->current_accel = 0.0f;
         handle->current_speed = handle->target_speed;
         return handle->current_speed;
     }
 
-    // 2. 决策期望加速度 (P控制思想，系数越大追得越快，但也容易震荡)
-    // 这里系数取 5.0 是经验值，可以理解为"追赶增益"
-    float desired_accel = v_err * 5.0f;
+    // 2. 决策期望加速度 (基于物理的"刹车距离"规划)
+    // 使用平方根控制器 (Square Root Controller) 替代简单的 P 控制
+    // 核心思想：计算当前速度误差下，能够安全刹停的最大允许加速度
+    // 公式推导：v = a^2 / (2*j)  =>  a = sqrt(2 * j * v)
+    // 这里使用 jerk_decel 作为安全限制，因为它决定了我们"消除加速度"的能力
+    
+    float safe_accel = sqrtf(2.0f * handle->jerk_decel * fabsf(v_err));
+    
+    // 施加方向
+    float desired_accel = SIGN(v_err) * safe_accel;
 
     // 3. 对期望加速度进行限幅 (梯形规划层)
     // 注意：如果是减速过程(desired_accel < 0)，用 max_decel 限制
@@ -60,15 +72,31 @@ float SCurve_Update(SCurve *handle, float dt) {
     // 这是一个非对称 S 曲线的关键
     float current_jerk_limit;
     
-    // 简单的状态机判断逻辑：
-    // 如果想要更大的加速度 -> 正在加速 -> 用 jerk_accel
-    // 如果想要更小的加速度 (更负) -> 正在刹车 -> 用 jerk_decel
+    // 优化后的状态机判断逻辑：
+    // 1. 加速 (Magnitude Increasing): 
+    //    - 正向加速 (0 -> +): jerk_accel (柔和，防抬头)
+    //    - 反向加速 (0 -> -): jerk_decel (快速，紧急制动)
+    // 2. 减速 (Magnitude Decreasing):
+    //    - 正向减速 (+ -> 0): jerk_decel (快速，松油门)
+    //    - 反向减速 (- -> 0): jerk_decel (快速，松刹车)
+    
     if (desired_accel > handle->current_accel) {
-         // 正在试图加油门，或者正在试图减少刹车力度
-         // 这里简化处理：只要是"正向变动"都视为加速柔和处理
-         current_jerk_limit = handle->jerk_accel;
+         // 趋势：向正方向变化 ( + )
+         if (handle->current_accel < 0) {
+             // 场景：正在倒车或刹车中，试图回正 ( - -> 0 )
+             // 动作：松刹车
+             // 期望：快速响应
+             current_jerk_limit = handle->jerk_decel; 
+         } else {
+             // 场景：正在正向加速 ( 0 -> + )
+             // 动作：加油门
+             // 期望：柔和 (防止打滑/抬头)
+             current_jerk_limit = handle->jerk_accel;
+         }
     } else {
-         // 正在试图踩刹车
+         // 趋势：向负方向变化 ( - )
+         // 场景：松油门 (+ -> 0) 或 踩刹车 (0 -> -)
+         // 期望：均为快速响应
          current_jerk_limit = handle->jerk_decel;
     }
 
@@ -81,12 +109,22 @@ float SCurve_Update(SCurve *handle, float dt) {
     } else {
         handle->current_accel = desired_accel; // 接近目标加速度时直接吸附
     }
+    
+    // [Safety] 强制加速度限幅 (防止积分漂移导致超出物理极限)
+    handle->current_accel = CLAMP(handle->current_accel, -handle->max_decel, handle->max_accel);
 
     // 6. 更新速度 (积分加速度)
     handle->current_speed += handle->current_accel * dt;
 
-    // 7. 最终安全限幅
-    handle->current_speed = CLAMP(handle->current_speed, 0.0f, handle->max_speed);
+    // 7. 最终安全限幅 & Anti-windup
+    // 如果速度达到边界，必须切断加速度，防止"顶着墙跑"导致内部状态错误
+    if (handle->current_speed > handle->max_speed) {
+        handle->current_speed = handle->max_speed;
+        if (handle->current_accel > 0.0f) handle->current_accel = 0.0f;
+    } else if (handle->current_speed < 0.0f) {
+        handle->current_speed = 0.0f;
+        if (handle->current_accel < 0.0f) handle->current_accel = 0.0f;
+    }
 
     return handle->current_speed;
 }

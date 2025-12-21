@@ -42,7 +42,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,6 +63,7 @@
 /* USER CODE BEGIN Variables */
 TaskHandle_t ToFMeasureTaskHandle;
 TaskHandle_t AdcCaptureTaskHandle;
+TaskHandle_t ImuCaptureTaskHandle;
 
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
@@ -275,17 +275,20 @@ void StartDefaultTask(void *argument)
             {
                 uint32_t pressTime = 0;
                 bool longPressHandled = false;
-                
-                while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET) {
+
+                while (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
+                {
                     osDelay(10);
                     pressTime += 10;
-                    if (pressTime > 1000 && !longPressHandled) { // 1s long press
+                    if (pressTime > 1000 && !longPressHandled)
+                    { // 1s long press
                         OledServiceToggleDisplay();
                         longPressHandled = true;
                     }
                 }
-                
-                if (!longPressHandled) {
+
+                if (!longPressHandled)
+                {
                     OledHandleKey(OLED_KEY_NEXT);
                 }
             }
@@ -297,21 +300,40 @@ void StartDefaultTask(void *argument)
             osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
             {
+                printf("KEY2 Pressed: Start\n");
                 TrackSetCommand(TRACK_CMD_START);
                 while (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
                     osDelay(10);
             }
         }
 
-        /* KEY3: Reset State Machine */
+        /* KEY3: Reset State Machine / Toggle Safety Check */
         if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
         {
             osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
             {
-                TrackSetCommand(TRACK_CMD_RESET);
+                uint32_t pressTime = 0;
+                bool longPressHandled = false;
+
                 while (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
+                {
                     osDelay(10);
+                    pressTime += 10;
+                    if (pressTime > 1000 && !longPressHandled)
+                    { // 1s long press - toggle safety check
+                        bool currentSafetyState = TrackIsSafetyCheckEnabled();
+                        TrackSetSafetyCheckEnabled(!currentSafetyState);
+                        printf("Safety Check %s\n", !currentSafetyState ? "ENABLED" : "DISABLED");
+                        longPressHandled = true;
+                    }
+                }
+
+                if (!longPressHandled)
+                {
+                    // Short press - reset state machine
+                    TrackSetCommand(TRACK_CMD_RESET);
+                }
             }
         }
 
@@ -377,7 +399,7 @@ void MotorSpeedTaskFunc(void *argument)
     /* Infinite loop */
     MotorInit();
     TickType_t xLast = xTaskGetTickCount();
-    const TickType_t freq = pdMS_TO_TICKS(10); // 100 Hz
+    const TickType_t freq = pdMS_TO_TICKS(5); // 200 Hz
 
     for (;;)
     {
@@ -419,10 +441,12 @@ void CarControlTaskFunc(void *argument)
     /* USER CODE BEGIN CarControlTaskFunc */
     /* Infinite loop */
     CarControlInit();
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms 周期
     for (;;)
     {
         CarControlHandler();
-        osDelay(10);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
     /* USER CODE END CarControlTaskFunc */
 }
@@ -437,12 +461,15 @@ void CarControlTaskFunc(void *argument)
 void GyroTaskFunc(void *argument)
 {
     /* USER CODE BEGIN GyroTaskFunc */
+    ImuCaptureTaskHandle = xTaskGetCurrentTaskHandle();
     /* Infinite loop */
     IMUInit();
     for (;;)
     {
+        // 等待IMU中断通知
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // 收到中断后处理IMU数据
         IMUHandler();
-        osDelay(10);
     }
     /* USER CODE END GyroTaskFunc */
 }

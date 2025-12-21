@@ -9,7 +9,7 @@
 #include "adc.h"
 
 #define ADS1220_VREF 2.048f
-#define ADS1220_GAIN 2.0f
+#define ADS1220_GAIN 1.0f
 
 static adc_result g_adc_result = {0};
 static uint16_t adc1_buffer = 0;
@@ -21,11 +21,11 @@ typedef struct
 } meg_adc_calibration;
 
 static meg_adc_calibration adc_calibrations[5] = {
-    {1.f/0.452684, 0.0f}, // Channel 1 (l)
-    {1.f/0.317609, 0.0f}, // Channel 2 (lm)
-    {1.0f, 0.0f},         // Channel M
-    {1.f/0.580803, 0.0f}, // Channel 3 (r)
-    {1.f/0.580379, 0.0f}  // Channel 4 (rm)
+    {1.f/1.583824, 0.0f}, 
+    {1.f/1.731796, 0.0f}, 
+    {1.0f, 0.0f},         
+    {1.f/1.606889, 0.0f}, // 
+    {1.f/1.053609, 0.0f}  // 
 };
 
 static float ADS1220_CodeToVoltage(long code)
@@ -38,47 +38,7 @@ static float ADC1_CodeToVoltage(uint16_t code)
     return ((float)code * 3.3f) / 4096.0f;
 }
 
-/* ----- ParamServer 回调：校准系数 k / b ----- */
-static float GetMegLK(void)
-{
-    return adc_calibrations[0].k;
-}
-static void SetMegLK(float v)
-{
-    adc_calibrations[0].k = v;
-}
-static float GetMegLMK(void)
-{
-    return adc_calibrations[1].k;
-}
-static void SetMegLMK(float v)
-{
-    adc_calibrations[1].k = v;
-}
-static float GetMegMK(void)
-{
-    return adc_calibrations[2].k;
-}
-static void SetMegMK(float v)
-{
-    adc_calibrations[2].k = v;
-}
-static float GetMegRK(void)
-{
-    return adc_calibrations[3].k;
-}
-static void SetMegRK(float v)
-{
-    adc_calibrations[3].k = v;
-}
-static float GetMegRMK(void)
-{
-    return adc_calibrations[4].k;
-}
-static void SetMegRMK(float v)
-{
-    adc_calibrations[4].k = v;
-}
+
 
 
 
@@ -134,102 +94,65 @@ static float GetMegRMCal(void)
 static void MegAdcRegisterParams(void)
 {
     static ParamDesc meg_params[] = {
-        /* k：增益，步长适中，串口+OLED */
-        {.name = "Meg_l_k",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegLK,
-         .ops.f.set = SetMegLK,
-         .step = 0.01f,
-         .read_only = 0,
-         .mask = PARAM_MASK_OLED},
-        {.name = "Meg_lm_k",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegLMK,
-         .ops.f.set = SetMegLMK,
-         .step = 0.01f,
-         .read_only = 0,
-         .mask = PARAM_MASK_OLED},
-        {.name = "Meg_m_k",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegMK,
-         .ops.f.set = SetMegMK,
-         .step = 0.01f,
-         .read_only = 0,
-         .mask = PARAM_MASK_OLED},
-        {.name = "Meg_r_k",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRK,
-         .ops.f.set = SetMegRK,
-         .step = 0.01f,
-         .read_only = 0,
-         .mask = PARAM_MASK_OLED},
-        {.name = "Meg_rm_k",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRMK,
-         .ops.f.set = SetMegRMK,
-         .step = 0.01f,
-         .read_only = 0,
-         .mask = PARAM_MASK_OLED},
-
         /* 原始值，只读，可选只在串口或 OLED，这里两边都看 */
-        {.name = "Meg_l_raw",
+        {.name = "M_l_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_lm_raw",
+        {.name = "M_lm_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLMRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_m_raw",
+        {.name = "M_m_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegMRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_r_raw",
+        {.name = "M_r_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_rm_raw",
+        {.name = "M_rm_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRMRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
 
-        /* 校准后值，只读 */
-        {.name = "Meg_l_cal",
+        // /* 校准后值，只读 */
+        {.name = "M_l_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_lm_cal",
+        {.name = "M_lm_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLMCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_m_cal",
+        {.name = "M_m_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegMCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_r_cal",
+        {.name = "M_r_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "Meg_rm_cal",
+        {.name = "M_rm_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRMCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
     };
 
-    for (int i = 0; i < (int)(sizeof(meg_params) / sizeof(meg_params[0])); ++i)
-    {
-        ParamServer_Register(&meg_params[i]);
-    }
+    // for (int i = 0; i < (int)(sizeof(meg_params) / sizeof(meg_params[0])); ++i)
+    // {
+    //     ParamServer_Register(&meg_params[i]);
+    // }
 }
 
 void MegAdcInit()
@@ -258,7 +181,8 @@ void MegAdcHandler()
     
     g_adc_result.m = ADC1_CodeToVoltage(adc1_buffer);
 
-    // Channel 1 (AIN0)DS1220_MUX_0_G);
+    // Channel 1 (AIN0)
+    ADS1220SetChannel(ADS1220_MUX_0_G);
     ADS1220SendStartCommand();
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(portMAX_DELAY));
     g_adc_result.lm = ADS1220_CodeToVoltage(ADS1220ReadData());
@@ -294,7 +218,7 @@ adc_result MegAdcGetCalibratedResult()
     calibrated.l = raw.l * adc_calibrations[0].k + adc_calibrations[0].b;
     calibrated.lm = raw.lm * adc_calibrations[1].k + adc_calibrations[1].b;
     calibrated.m = raw.m * adc_calibrations[2].k + adc_calibrations[2].b;
-    calibrated.r = raw.r * adc_calibrations[3].k + adc_calibrations[3].b;
-    calibrated.rm = raw.rm * adc_calibrations[4].k + adc_calibrations[4].b;
+    calibrated.rm = raw.rm * adc_calibrations[3].k + adc_calibrations[3].b;
+    calibrated.r = raw.r * adc_calibrations[4].k + adc_calibrations[4].b;
     return calibrated;
 }

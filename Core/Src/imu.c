@@ -2,6 +2,7 @@
 #include "lsm6ds3_reg.h"
 #include "log.h"
 #include "spi.h"
+#include "param_server.h"
 
 // LSM6DS3 SPI接口实现
 static int32_t lsm6ds3_spi_write(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
@@ -75,16 +76,38 @@ static accel_data current_accel_data;
 // 全局IMU数据变量
 static imu_data current_imu_data;
 
+// IMU初始化状态标志
+static uint8_t imu_initialized = 0;
+
+// 陀螺仪滤波器系数 (0-1之间，越小滤波效果越强)
+#define GYRO_FILTER_ALPHA 0.2f
+
+// 滤波后的陀螺仪数据
+static gyro_data filtered_gyro_data;
+
+// 滤波器初始化标志
+static uint8_t gyro_filter_initialized = 0;
+
+/* 参数服务器回调函数 */
+static float GetGyroYaw(void) { return current_gyro_data.yaw; }
+static float GetGyroPitch(void) { return current_gyro_data.pitch; }
+static float GetGyroRoll(void) { return current_gyro_data.roll; }
+static float GetAccelX(void) { return current_accel_data.ax; }
+static float GetAccelY(void) { return current_accel_data.ay; }
+static float GetAccelZ(void) { return current_accel_data.az; }
+
 void GyroInit()
 {
     LOG_INFO("GyroInit start");
     
     // 配置LSM6DS3陀螺仪部分
-    // 设置陀螺仪量程为±1000dps
-    lsm6ds3_gy_full_scale_set(&lsm6ds3_ctx, LSM6DS3_1000dps);
+    // 设置陀螺仪量程为±2000dps (更高精度)
+    lsm6ds3_gy_full_scale_set(&lsm6ds3_ctx, LSM6DS3_2000dps);
     
-    // 设置陀螺仪数据率为104Hz
     lsm6ds3_gy_data_rate_set(&lsm6ds3_ctx, LSM6DS3_GY_ODR_104Hz);
+    
+    // 设置陀螺仪为高性能模式
+    lsm6ds3_gy_power_mode_set(&lsm6ds3_ctx, LSM6DS3_GY_HIGH_PERFORMANCE);
     
     // 启用陀螺仪轴
     lsm6ds3_gy_axis_x_data_set(&lsm6ds3_ctx, PROPERTY_ENABLE);
@@ -99,11 +122,13 @@ void AccelInit()
     LOG_INFO("AccelInit start");
     
     // 配置LSM6DS3加速度计部分
-    // 设置加速度计量程为±4g
-    lsm6ds3_xl_full_scale_set(&lsm6ds3_ctx, LSM6DS3_4g);
+    // 设置加速度计量程为±8g (更高量程)
+    lsm6ds3_xl_full_scale_set(&lsm6ds3_ctx, LSM6DS3_8g);
     
-    // 设置加速度计数据率为104Hz
     lsm6ds3_xl_data_rate_set(&lsm6ds3_ctx, LSM6DS3_XL_ODR_104Hz);
+    
+    // 设置加速度计为高性能模式
+    lsm6ds3_xl_power_mode_set(&lsm6ds3_ctx, LSM6DS3_XL_HIGH_PERFORMANCE);
     
     // 启用加速度计轴
     lsm6ds3_xl_axis_x_data_set(&lsm6ds3_ctx, PROPERTY_ENABLE);
@@ -117,10 +142,18 @@ void IMUInit()
 {
     LOG_INFO("IMUInit start");
     
+    // 重置滤波器初始化标志
+    gyro_filter_initialized = 0;
+    
+    // 尝试读取设备ID（复位前）
+    uint8_t device_id = 0;
+    lsm6ds3_device_id_get(&lsm6ds3_ctx, &device_id);
+    LOG_INFO("LSM6DS3 device ID before reset: 0x%02X", device_id);
+
     // 软件复位设备
     uint8_t rst = 0x01;
     lsm6ds3_spi_write(&lsm6ds3_ctx, LSM6DS3_CTRL3_C, &rst, 1);
-    HAL_Delay(10); // 等待复位完成
+    HAL_Delay(100); // 等待复位完成，增加延时到100ms
     
     // 设置块数据更新
     lsm6ds3_block_data_update_set(&lsm6ds3_ctx, PROPERTY_ENABLE);
@@ -131,21 +164,61 @@ void IMUInit()
     // 禁用I2C接口
     lsm6ds3_i2c_interface_set(&lsm6ds3_ctx, LSM6DS3_I2C_DISABLE);
     
-    // 检查设备ID
-    uint8_t device_id;
-    lsm6ds3_device_id_get(&lsm6ds3_ctx, &device_id);
+    // 检查设备ID（复位后），尝试多次
+    int retry = 5;
+    while (retry--)
+    {
+        lsm6ds3_device_id_get(&lsm6ds3_ctx, &device_id);
+        if (device_id == LSM6DS3_ID)
+        {
+            break;
+        }
+        HAL_Delay(10);
+    }
     
     if(device_id != LSM6DS3_ID)
     {
-        LOG_ERROR("LSM6DS3 device ID mismatch: 0x%02X", device_id);
+        LOG_ERROR("LSM6DS3 device ID mismatch: 0x%02X (Expected: 0x%02X)", device_id, LSM6DS3_ID);
+        imu_initialized = 0;
         return;
     }
     
     LOG_INFO("LSM6DS3 device ID verified: 0x%02X", device_id);
     
+    // 配置INT1引脚用于数据就绪中断
+    lsm6ds3_int1_route_t int1_route;
+    // 启用陀螺仪和加速度计数据就绪中断到INT1引脚
+    int1_route.int1_drdy_g = PROPERTY_ENABLE;  // 陀螺仪数据就绪中断
+    int1_route.int1_drdy_xl = PROPERTY_ENABLE; // 加速度计数据就绪中断
+    lsm6ds3_pin_int1_route_set(&lsm6ds3_ctx, &int1_route);
+    
+    // 设置中断引脚特性
+    lsm6ds3_pin_mode_set(&lsm6ds3_ctx, LSM6DS3_PUSH_PULL);  // 推挽输出
+    lsm6ds3_pin_polarity_set(&lsm6ds3_ctx, LSM6DS3_ACTIVE_HIGH); // 高电平有效
+    lsm6ds3_int_notification_set(&lsm6ds3_ctx, LSM6DS3_INT_PULSED); // 脉冲中断
+    
     // 初始化陀螺仪和加速度计
     GyroInit();
     AccelInit();
+    
+    // 标记IMU初始化成功
+    imu_initialized = 1;
+    
+    /* 注册IMU参数到服务器：陀螺仪和加速度计数据都通过串口输出 */
+    static ParamDesc imu_params[] = {
+        // 陀螺仪参数
+        { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "GYRO_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "GYRO_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        
+        // 加速度计参数
+        { .name = "ACCEL_X", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelX, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+    };
+    for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
+        ParamServer_Register(&imu_params[i]);
+    }
     
     LOG_INFO("IMUInit done");
 }
@@ -162,14 +235,41 @@ void GyroHandler()
     {
         // 读取原始陀螺仪数据
         lsm6ds3_angular_rate_raw_get(&lsm6ds3_ctx, gyro_raw);
-        
+
+        // 零漂补偿
+        gyro_raw[0] -= 4;
+        gyro_raw[1] += 14;
+        gyro_raw[2]-=3;
         // 数据就绪，可以进行转换
         // 将原始数据转换为dps
-        // LSM6DS3_1000dps的转换系数是35.0 mdps/LSB
+        // LSM6DS3_2000dps的转换系数是70.0 mdps/LSB
         // 这里需要根据实际量程调整转换系数
-        current_gyro_data.yaw = (float)gyro_raw[0] * 35.0f / 32768.0f;
-        current_gyro_data.pitch = (float)gyro_raw[1] * 35.0f / 32768.0f;
-        current_gyro_data.roll = (float)gyro_raw[2] * 35.0f / 32768.0f;
+        current_gyro_data.yaw = (float)gyro_raw[0] * 70.0f / 32768.0f;
+        current_gyro_data.pitch = (float)gyro_raw[1] * 70.0f / 32768.0f;
+        current_gyro_data.roll = (float)gyro_raw[2] * 70.0f / 32768.0f;
+
+        // 一阶低通滤波器实现
+        if (!gyro_filter_initialized)
+        {
+            // 第一次运行时，用原始数据初始化滤波器输出
+            filtered_gyro_data = current_gyro_data;
+            gyro_filter_initialized = 1;
+        }
+        else
+        {
+            // 一阶低通滤波器公式: filtered = alpha * new + (1 - alpha) * filtered
+            filtered_gyro_data.yaw = GYRO_FILTER_ALPHA * current_gyro_data.yaw +
+                                   (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.yaw;
+            filtered_gyro_data.pitch = GYRO_FILTER_ALPHA * current_gyro_data.pitch +
+                                     (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.pitch;
+            filtered_gyro_data.roll = GYRO_FILTER_ALPHA * current_gyro_data.roll +
+                                    (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.roll;
+        }
+
+        // 更新当前陀螺仪数据为滤波后的数据
+        current_gyro_data = filtered_gyro_data;
+
+        // printf("%d,%d,%d\n",gyro_raw[0],gyro_raw[1],gyro_raw[2]);
     }
 }
 
@@ -185,19 +285,29 @@ void AccelHandler()
     {
         // 读取原始加速度计数据
         lsm6ds3_acceleration_raw_get(&lsm6ds3_ctx, accel_raw);
+
+
         
         // 数据就绪，可以进行转换
         // 将原始数据转换为g
-        // LSM6DS3_4g的转换系数是0.122 mg/LSB
+        // LSM6DS3_8g的转换系数是0.244 mg/LSB
         // 这里需要根据实际量程调整转换系数
-        current_accel_data.ax = (float)accel_raw[0] * 0.122f / 1000.0f;
-        current_accel_data.ay = (float)accel_raw[1] * 0.122f / 1000.0f;
-        current_accel_data.az = (float)accel_raw[2] * 0.122f / 1000.0f;
+        current_accel_data.ax = (float)accel_raw[0] * 0.244f / 1000.0f;
+        current_accel_data.ay = (float)accel_raw[1] * 0.244f / 1000.0f;
+        current_accel_data.az = (float)accel_raw[2] * 0.244f / 1000.0f;
     }
 }
 
 void IMUHandler()
 {
+    // 检查IMU是否已初始化，如果未初始化则尝试初始化
+    if (!imu_initialized)
+    {
+        LOG_INFO("IMU not initialized, attempting to initialize...");
+        IMUInit();
+        return; // 本次不处理数据，等待下次调用
+    }
+    
     // 处理陀螺仪数据
     GyroHandler();
     
@@ -207,6 +317,8 @@ void IMUHandler()
     // 更新完整IMU数据
     current_imu_data.gyro = current_gyro_data;
     current_imu_data.accel = current_accel_data;
+
+
 }
 
 gyro_data GyroGetGyroData()

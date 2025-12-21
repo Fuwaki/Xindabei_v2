@@ -39,6 +39,10 @@ TrackState TrackGetCurrentState(void);
 // 获取状态名称 (用于调试)
 const char* TrackGetStateName(TrackState state);
 
+// 安全检测开关功能
+void TrackSetSafetyCheckEnabled(bool enabled);
+bool TrackIsSafetyCheckEnabled(void);
+
 #ifdef __cplusplus
 }
 #endif
