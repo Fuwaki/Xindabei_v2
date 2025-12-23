@@ -76,11 +76,16 @@ static accel_data current_accel_data;
 // 全局IMU数据变量
 static imu_data current_imu_data;
 
+// 陀螺仪零漂 (手动标定值)
+// 请在静止状态下观察输出，填入以下偏移量
+static float gyro_bias[3] = {0.0f, 0.0f, 0.0};
+
 // IMU初始化状态标志
 static uint8_t imu_initialized = 0;
 
 // 陀螺仪滤波器系数 (0-1之间，越小滤波效果越强)
-#define GYRO_FILTER_ALPHA 0.2f
+// 竞速车需要高响应，减弱滤波强度以减少相位滞后
+#define GYRO_FILTER_ALPHA 0.8f
 
 // 滤波后的陀螺仪数据
 static gyro_data filtered_gyro_data;
@@ -104,7 +109,7 @@ void GyroInit()
     // 设置陀螺仪量程为±2000dps (更高精度)
     lsm6ds3_gy_full_scale_set(&lsm6ds3_ctx, LSM6DS3_2000dps);
     
-    lsm6ds3_gy_data_rate_set(&lsm6ds3_ctx, LSM6DS3_GY_ODR_104Hz);
+    lsm6ds3_gy_data_rate_set(&lsm6ds3_ctx, LSM6DS3_GY_ODR_208Hz);
     
     // 设置陀螺仪为高性能模式
     lsm6ds3_gy_power_mode_set(&lsm6ds3_ctx, LSM6DS3_GY_HIGH_PERFORMANCE);
@@ -125,11 +130,15 @@ void AccelInit()
     // 设置加速度计量程为±8g (更高量程)
     lsm6ds3_xl_full_scale_set(&lsm6ds3_ctx, LSM6DS3_8g);
     
-    lsm6ds3_xl_data_rate_set(&lsm6ds3_ctx, LSM6DS3_XL_ODR_104Hz);
+    // 降低采样率以优化性能 (52Hz)
+    lsm6ds3_xl_data_rate_set(&lsm6ds3_ctx, LSM6DS3_XL_ODR_52Hz);
     
     // 设置加速度计为高性能模式
     lsm6ds3_xl_power_mode_set(&lsm6ds3_ctx, LSM6DS3_XL_HIGH_PERFORMANCE);
     
+    // 设置抗混叠滤波器带宽 (200Hz)
+    lsm6ds3_xl_filter_analog_set(&lsm6ds3_ctx, LSM6DS3_ANTI_ALIASING_200Hz);
+
     // 启用加速度计轴
     lsm6ds3_xl_axis_x_data_set(&lsm6ds3_ctx, PROPERTY_ENABLE);
     lsm6ds3_xl_axis_y_data_set(&lsm6ds3_ctx, PROPERTY_ENABLE);
@@ -216,9 +225,9 @@ void IMUInit()
         { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL },
         { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL },
     };
-    for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
-        ParamServer_Register(&imu_params[i]);
-    }
+    // for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
+    //     ParamServer_Register(&imu_params[i]);
+    // }
     
     LOG_INFO("IMUInit done");
 }
@@ -236,17 +245,15 @@ void GyroHandler()
         // 读取原始陀螺仪数据
         lsm6ds3_angular_rate_raw_get(&lsm6ds3_ctx, gyro_raw);
 
-        // 零漂补偿
-        gyro_raw[0] -= 4;
-        gyro_raw[1] += 14;
-        gyro_raw[2]-=3;
-        // 数据就绪，可以进行转换
-        // 将原始数据转换为dps
-        // LSM6DS3_2000dps的转换系数是70.0 mdps/LSB
-        // 这里需要根据实际量程调整转换系数
-        current_gyro_data.yaw = (float)gyro_raw[0] * 70.0f / 32768.0f;
-        current_gyro_data.pitch = (float)gyro_raw[1] * 70.0f / 32768.0f;
-        current_gyro_data.roll = (float)gyro_raw[2] * 70.0f / 32768.0f;
+        // 使用库函数转换单位 (mdps -> dps)
+        float gyro_x_dps = lsm6ds3_from_fs2000dps_to_mdps(gyro_raw[0]) / 1000.0f;
+        float gyro_y_dps = lsm6ds3_from_fs2000dps_to_mdps(gyro_raw[1]) / 1000.0f;
+        float gyro_z_dps = lsm6ds3_from_fs2000dps_to_mdps(gyro_raw[2]) / 1000.0f;
+
+        // 减去零漂 (已转换为dps)
+        current_gyro_data.yaw = gyro_x_dps - gyro_bias[0];
+        current_gyro_data.pitch = gyro_y_dps - gyro_bias[1];
+        current_gyro_data.roll = gyro_z_dps - gyro_bias[2];
 
         // 一阶低通滤波器实现
         if (!gyro_filter_initialized)
@@ -286,15 +293,10 @@ void AccelHandler()
         // 读取原始加速度计数据
         lsm6ds3_acceleration_raw_get(&lsm6ds3_ctx, accel_raw);
 
-
-        
-        // 数据就绪，可以进行转换
-        // 将原始数据转换为g
-        // LSM6DS3_8g的转换系数是0.244 mg/LSB
-        // 这里需要根据实际量程调整转换系数
-        current_accel_data.ax = (float)accel_raw[0] * 0.244f / 1000.0f;
-        current_accel_data.ay = (float)accel_raw[1] * 0.244f / 1000.0f;
-        current_accel_data.az = (float)accel_raw[2] * 0.244f / 1000.0f;
+        // 使用库函数转换单位 (mg -> g)
+        current_accel_data.ax = lsm6ds3_from_fs8g_to_mg(accel_raw[0]) / 1000.0f;
+        current_accel_data.ay = lsm6ds3_from_fs8g_to_mg(accel_raw[1]) / 1000.0f;
+        current_accel_data.az = lsm6ds3_from_fs8g_to_mg(accel_raw[2]) / 1000.0f;
     }
 }
 

@@ -3,11 +3,11 @@
 #include "common.h"
 #include "log.h"
 #include "main.h"
+#include "param_server.h"
 #include "pid.h"
 #include "stm32f4xx_hal_adc_ex.h"
 #include "stm32f4xx_hal_gpio.h"
 #include "tim.h"
-#include "param_server.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -40,14 +40,17 @@ static PIDController motor2_current_pid;
 static EncPLL motor1_pll;
 static EncPLL motor2_pll;
 
-static float motor_1_speed_setpoint = 0.0;                //左电机
-static float motor_2_speed_setpoint = 0.0;                  //右电机
+static float motor_1_speed_setpoint = 0.0; // 左电机
+static float motor_2_speed_setpoint = 0.0; // 右电机
 
 static int32_t motor_1_current = 0;
 static int32_t motor_1_current_setpoint = 0;
 
 static int32_t motor_2_current = 0;
 static int32_t motor_2_current_setpoint = 0;
+
+static float motor_1_speed_output = 0.0f;
+static float motor_2_speed_output = 0.0f;
 
 // 低通滤波器结构体 (Exponential Moving Average)
 // 优点: 计算快，内存少，适合高频控制环路
@@ -102,10 +105,30 @@ float Motor_GetSpeed2(void)
 }
 
 /* 参数服务器回调函数 */
-static float GetMotor1SpeedTarget(void) { return motor_1_speed_setpoint; }
-static float GetMotor2SpeedTarget(void) { return motor_2_speed_setpoint; }
-static float GetMotor1SpeedActual(void) { return motor1_pll.omega/100.0; }
-static float GetMotor2SpeedActual(void) { return motor2_pll.omega/100.0; }
+static float GetMotor1SpeedTarget(void)
+{
+    return motor_1_speed_setpoint;
+}
+static float GetMotor2SpeedTarget(void)
+{
+    return motor_2_speed_setpoint;
+}
+static float GetMotor1SpeedActual(void)
+{
+    return motor1_pll.omega / 100.0;
+}
+static float GetMotor2SpeedActual(void)
+{
+    return motor2_pll.omega / 100.0;
+}
+static float GetMotor1SpeedOutput(void)
+{
+    return motor_1_speed_output;
+}
+static float GetMotor2SpeedOutput(void)
+{
+    return motor_2_speed_output;
+}
 
 // 更新电流反馈值 (供中断回调调用)
 void Motor_UpdateCurrentFeedback(uint32_t raw1, uint32_t raw2)
@@ -164,12 +187,12 @@ void MotorInit()
     EncPLL_Init(&motor1_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
     EncPLL_Init(&motor2_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
 
-    // PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.03f, 0.01f, 0.0002f, 0.0015f, 0.01f);
-    PID_Init(&motor1_speed_pid, PID_MODE_INCREMENTAL, 0.1f, 0.07f, 0.0f, 0.012f, 0.005f);
+    PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.09f, 0.09f, 0.0f, 0.035f, 0.005f);
+    PID_SetIntegralLimit(&motor1_speed_pid, -6.0, 6.0);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
-    // PID_EnableTD(&motor1_speed_pid,  0.1);
 
-    PID_Init(&motor2_speed_pid, PID_MODE_INCREMENTAL, 0.1f, 0.07f, 0.0f, 0.012f, 0.005f);
+    PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 0.09f, 0.09f, 0.0f, 0.035f, 0.005f);
+    PID_SetIntegralLimit(&motor2_speed_pid, -6.0, 6.0);
     PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f);
 
     PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.005f);
@@ -180,14 +203,41 @@ void MotorInit()
 
     /* 注册参数到服务器：电机目标/实际速度都在串口和 OLED 显示 */
     static ParamDesc motor_params[] = {
-        { .name = "M1_Tgt", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor1SpeedTarget, .read_only = 1, .mask = PARAM_MASK_OLED },
-        { .name = "M2_Tgt", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor2SpeedTarget, .read_only = 1, .mask = PARAM_MASK_OLED },
-        { .name = "M1_Spd", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor1SpeedActual, .read_only = 1, .mask = PARAM_MASK_OLED },
-        { .name = "M2_Spd", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetMotor2SpeedActual, .read_only = 1, .mask = PARAM_MASK_OLED },
+        {.name = "M1_Tgt",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor1SpeedTarget,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+        {.name = "M2_Tgt",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor2SpeedTarget,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+        {.name = "M1_Spd",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor1SpeedActual,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+        {.name = "M2_Spd",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor2SpeedActual,
+         .read_only = 1,
+         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+        // {.name = "M1_Out",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMotor1SpeedOutput,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+        // {.name = "M2_Out",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMotor2SpeedOutput,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
     };
-    for (int i = 0; i < sizeof(motor_params)/sizeof(motor_params[0]); i++) {
-        ParamServer_Register(&motor_params[i]);
-    }
+    // for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
+    // {
+    //     ParamServer_Register(&motor_params[i]);
+    // }
 
     LOG_INFO("MotorInit done");
 }
@@ -266,17 +316,24 @@ void SpeedLoopHandler()
 
     float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 100.0f;
     float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 100.0f;
-    // float output_1 = PID_Update_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
-    // float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
-    float output_1 = 0.4;
-    float output_2=0.3;
 
-    // printf("" FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "\n",
+    float output_1 = PID_Update_Positional(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
+    float output_2 = PID_Update_Positional(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+
+    motor_1_speed_output = output_1;
+    motor_2_speed_output = output_2;
+
+    // float output_1 = 0.4;ate_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
+    // float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+    // float output_1 = 0.4;
+    // float output_2=0.3;
+
+    // printf("" FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT ","
+    // FLOAT_FMT "\n",
     //        float_to_str(speed_1), float_to_str(speed_2), float_to_str(motor1_pll.debug_error),
     //        float_to_str(motor2_pll.debug_error),float_to_str(output_1),float_to_str(output_2),
     //        float_to_str(motor_1_speed_setpoint), float_to_str(motor_2_speed_setpoint)
     //        );
-
 
 #if USE_SPEED_LOOP_ONLY
     // 直接将速度环PID输出作为PWM占空比应用

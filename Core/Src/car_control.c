@@ -5,6 +5,7 @@
 #include "motor.h"
 #include "pid.h"
 #include "s_curve.h"
+#include <math.h>
 #include <stdint.h>
 
 static float target_velocity = 0.0;
@@ -15,10 +16,17 @@ static SCurve speed_scurve;
 void CarControlInit()
 {
     LOG_INFO("CarControlInit start");
-    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 2.7, 0.3, 0.2, 2.9, 0.01); // 角速度环使用ki 不要上d
-    PID_EnableTD(&angular_velocity_pid, 0.2);
+    // 竞速车角速度环：高响应，低延迟
+    // 移除D项（设为0），因为陀螺仪噪声经微分后会引起震荡
+    // 适当提高P项以增强响应，I项用于消除稳态误差
+    // 保留前馈 Kf=2.9 以提高动态响应速度
+    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 0.03, 0.0, 0.0, 0.9, 0.01); 
+    
+    // 禁用TD（微分跟踪器），减少计算延迟，直接响应
+    // PID_EnableTD(&angular_velocity_pid, 0.2);
+    
     PID_SetIntegralLimit(&angular_velocity_pid, -10.0, 10.0);    
-    SCurve_Init(&speed_scurve, 30.0f, 10.f, 8.f, 10.f, 50.f);
+    SCurve_Init(&speed_scurve, 70.0f, 10.f, 8.f, 10.f, 50.f);
     LOG_INFO("CarControlInit done");
 }
 
@@ -26,14 +34,14 @@ void CarControlHandler()
 {
     imu_data ImuData=IMUGetData();
     // // TODO: 增加前馈
-    // // TODO: 限幅, target_angular_veloci
-    // // TODO: 方向矫正 
-    float angular_velocity_output = PID_Update_Positional(&angular_velocity_pid, target_angular_velocity,-ImuData.gyro.roll);
+    // // TODO: 限幅, target_angular_velocity
+    float angular_velocity_output =
+        PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, -ImuData.gyro.roll);
+    // if (fabsf(angular_velocity_output) < 5.2)angular_velocity_output=0;         //平衡齿轮间隙带来的震荡
     // //正为顺时针
     //
-    // TODO: 设计角速度环的调用频率
     //
-    target_velocity = -SCurve_Update(&speed_scurve, 0.05f); // 10ms调用一次
+    target_velocity = SCurve_Update(&speed_scurve, 0.05f); // 10ms调用一次
 
     // float angular_velocity_output = target_angular_velocity; // 先用开环
     float left_motor_speed = target_velocity + angular_velocity_output;

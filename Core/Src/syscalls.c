@@ -29,14 +29,100 @@
 #include "usart.h"
 
 /* Variables */
+#define TX_BUF_SIZE 1024
+static uint8_t tx_buffer[TX_BUF_SIZE];
+static volatile uint16_t tx_head = 0;
+static volatile uint16_t tx_tail = 0;
+static volatile uint8_t tx_busy = 0;
+static volatile uint16_t tx_dma_len = 0;
+
+static inline uint8_t in_isr(void)
+{
+  return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0U;
+}
+
+static void Start_DMA_Tx(void)
+{
+  // Must be called with interrupts disabled or inside critical section
+  // to protect tx_busy and tx_tail access
+
+  if (tx_head == tx_tail)
+  {
+    tx_busy = 0;
+    return;
+  }
+
+  tx_busy = 1;
+
+  // Calculate length
+  if (tx_head > tx_tail)
+  {
+    tx_dma_len = tx_head - tx_tail;
+  }
+  else
+  {
+    tx_dma_len = TX_BUF_SIZE - tx_tail;
+  }
+
+  // Clean cache if necessary (not needed for Cortex-M4 without D-Cache enabled or if buffer is in SRAM1/2)
+  // SCB_CleanDCache_by_Addr((uint32_t*)&tx_buffer[tx_tail], tx_dma_len);
+
+  if (HAL_UART_Transmit_DMA(&huart6, &tx_buffer[tx_tail], tx_dma_len) != HAL_OK)
+  {
+    tx_busy = 0;
+  }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART6)
+    {
+        // Update tail after successful transmission
+        tx_tail = (tx_tail + tx_dma_len) % TX_BUF_SIZE;
+        
+        // Try to start next transmission
+        // Callback is already in ISR context, so interrupts are masked (at least for this priority)
+        // But we should be careful if we call this from thread context (not the case here)
+        Start_DMA_Tx();
+    }
+}
+
+static void buffer_append(uint8_t ch)
+{
+  uint16_t next_head = (tx_head + 1) % TX_BUF_SIZE;
+
+  // If buffer full
+  while (next_head == tx_tail)
+  {
+    if (in_isr())
+    {
+      return; // drop in ISR to avoid deadlock
+    }
+    __NOP();
+  }
+
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  tx_buffer[tx_head] = ch;
+  tx_head = next_head;
+  if (!primask) __enable_irq();
+}
+
 int __io_putchar(int ch)
 {
-    // 使用阻塞式发送带超时，防止DMA发送栈变量地址导致的乱码和丢包
-    if (ch == '\n') {
-        uint8_t cr = '\r';
-        HAL_UART_Transmit(&huart6, &cr, 1, 10);
+    buffer_append((uint8_t)ch);
+
+    // Check if DMA is idle and start transmission
+    // We need a critical section to check tx_busy to avoid race condition
+    // where DMA finishes just after we check but before we start
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (!tx_busy)
+    {
+        Start_DMA_Tx();
     }
-    HAL_UART_Transmit(&huart6, (uint8_t *)&ch, 1, 10);
+    if (!primask) __enable_irq();
+
     return ch;
 }
 

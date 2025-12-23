@@ -76,6 +76,10 @@ void OledServiceUpdate(void)
         // 计算文本位置使其居中显示
         uint8_t textWidth = strlen(s_emergencyMessage) * 7;  // 7像素宽度每个字符
         uint8_t textHeight = 10;  // 字体高度
+        
+        // 限制宽度防止溢出
+        if (textWidth > 120) textWidth = 120;
+        
         uint8_t xPos = (128 - textWidth) / 2;
         uint8_t yPos = (64 - textHeight) / 2;
         
@@ -83,8 +87,16 @@ void OledServiceUpdate(void)
         if (xPos > 127) xPos = 0;
         if (yPos > 63) yPos = 0;
         
-        // 绘制文字背景框 (白底)
-        ssd1306_FillRectangle(xPos - 2, yPos - 2, xPos + textWidth + 1, yPos + textHeight + 1, White);
+        // 绘制文字背景框 (白底) - 增加边界检查
+        uint8_t rectX1 = (xPos >= 2) ? xPos - 2 : 0;
+        uint8_t rectY1 = (yPos >= 2) ? yPos - 2 : 0;
+        uint8_t rectX2 = xPos + textWidth + 1;
+        uint8_t rectY2 = yPos + textHeight + 1;
+        
+        if (rectX2 > 127) rectX2 = 127;
+        if (rectY2 > 63) rectY2 = 63;
+
+        ssd1306_FillRectangle(rectX1, rectY1, rectX2, rectY2, White);
         
         ssd1306_SetCursor(xPos, yPos);
         ssd1306_WriteString(s_emergencyMessage, Font_7x10, Black);  // 黑色文字

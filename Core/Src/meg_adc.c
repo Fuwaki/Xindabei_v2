@@ -1,12 +1,12 @@
 #include "meg_adc.h"
 #include "ADS1220.h"
 #include "FreeRTOS.h"
+#include "adc.h"
 #include "cmsis_os2.h"
 #include "log.h"
 #include "param_server.h"
 #include "portmacro.h"
 #include "task.h"
-#include "adc.h"
 
 #define ADS1220_VREF 2.048f
 #define ADS1220_GAIN 1.0f
@@ -21,11 +21,11 @@ typedef struct
 } meg_adc_calibration;
 
 static meg_adc_calibration adc_calibrations[5] = {
-    {1.f/1.583824, 0.0f}, 
-    {1.f/1.731796, 0.0f}, 
-    {1.0f, 0.0f},         
-    {1.f/1.606889, 0.0f}, // 
-    {1.f/1.053609, 0.0f}  // 
+    {1.f /0.774808, 0.0f},
+    {1.f / 0.859293, 0.0f},
+    {1.f/0.4, 0.0f},
+    {1.f / 0.431542, 0.0f}, //
+    {1.f / 0.918279, 0.0f}  //
 };
 
 static float ADS1220_CodeToVoltage(long code)
@@ -33,14 +33,18 @@ static float ADS1220_CodeToVoltage(long code)
     return ((float)code * ADS1220_VREF) / (ADS1220_GAIN * 8388608.0f);
 }
 
+/* Kick single-shot conversion and wait for DRDY, clearing any stale notify first. */
+static void ADS1220_StartAndWait(void)
+{
+    (void)ulTaskNotifyTake(pdTRUE, 0);
+    ADS1220SendStartCommand();
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(50));
+}
+
 static float ADC1_CodeToVoltage(uint16_t code)
 {
     return ((float)code * 3.3f) / 4096.0f;
 }
-
-
-
-
 
 /* 原始/校准后的读数，方便观察调参效果 */
 static float GetMegLRaw(void)
@@ -110,14 +114,14 @@ static void MegAdcRegisterParams(void)
          .ops.f.get = GetMegMRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_r_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
         {.name = "M_rm_raw",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRMRaw,
+         .read_only = 1,
+         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        {.name = "M_r_raw",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMegRRaw,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
 
@@ -137,14 +141,14 @@ static void MegAdcRegisterParams(void)
          .ops.f.get = GetMegMCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_r_cal",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRCal,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
         {.name = "M_rm_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRMCal,
+         .read_only = 1,
+         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        {.name = "M_r_cal",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMegRCal,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
     };
@@ -162,48 +166,48 @@ void MegAdcInit()
     ADS1220Config();
 
     // 开启dma
-    if (HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc1_buffer, 1) != HAL_OK)
+    if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)&adc1_buffer, 1) != HAL_OK)
     {
         LOG_ERROR("ADC1 Start DMA failed");
     }
-
+    
     MegAdcRegisterParams();
     LOG_INFO("MegAdcInit done");
 }
-
 
 void MegAdcHandler()
 {
     HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 
+    HAL_ADC_Stop_DMA(&hadc1);
+    __HAL_ADC_CLEAR_FLAG(&hadc1, ADC_FLAG_OVR);
     // 触发adc采样 规则通道
-    HAL_ADC_Start(&hadc1);
-    
-    g_adc_result.m = ADC1_CodeToVoltage(adc1_buffer);
+    if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)&adc1_buffer, 1) != HAL_OK)
+    {
+        LOG_ERROR("ADC1 Start DMA failed");
+    }
 
     // Channel 1 (AIN0)
     ADS1220SetChannel(ADS1220_MUX_0_G);
-    ADS1220SendStartCommand();
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(portMAX_DELAY));
+    ADS1220_StartAndWait();
     g_adc_result.lm = ADS1220_CodeToVoltage(ADS1220ReadData());
 
     // Channel 2 (AIN1)
     ADS1220SetChannel(ADS1220_MUX_1_G);
-    ADS1220SendStartCommand();
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(portMAX_DELAY));
+    ADS1220_StartAndWait();
     g_adc_result.l = ADS1220_CodeToVoltage(ADS1220ReadData());
 
     // Channel 3 (AIN2)
     ADS1220SetChannel(ADS1220_MUX_2_G);
-    ADS1220SendStartCommand();
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(portMAX_DELAY));
-    g_adc_result.rm = ADS1220_CodeToVoltage(ADS1220ReadData());
+    ADS1220_StartAndWait();
+    g_adc_result.r = ADS1220_CodeToVoltage(ADS1220ReadData());
 
     // Channel 4 (AIN3)
     ADS1220SetChannel(ADS1220_MUX_3_G);
-    ADS1220SendStartCommand();
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(portMAX_DELAY));
-    g_adc_result.r = ADS1220_CodeToVoltage(ADS1220ReadData());
+    ADS1220_StartAndWait();
+    g_adc_result.rm = ADS1220_CodeToVoltage(ADS1220ReadData());
+
+    g_adc_result.m = ADC1_CodeToVoltage(adc1_buffer);
 }
 
 adc_result MegAdcGetResult()
