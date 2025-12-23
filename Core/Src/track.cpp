@@ -33,15 +33,16 @@ constexpr float VEL_RING = 1.5f;
 constexpr float ANG_RING = 0.8f;
 constexpr float VEL_EXIT = 2.0f;
 constexpr float ANG_EXIT = -0.5f;
-constexpr float VEL_TRACKING = 38.0f;
+constexpr float VEL_TRACKING = 40.0f;
 
 constexpr float ROLL_OVER_ANGLE = 40.0f;
 
 // 避障参数
-constexpr uint16_t OBSTACLE_DIST_THRESHOLD = 200; // mm
-constexpr float VEL_OBSTACLE = 1.0f;
-constexpr float ANG_OBSTACLE = 1.5f;        // 半圆角速度
-constexpr uint32_t OBSTACLE_TIME_MS = 2000; // 避障动作持续时间
+constexpr uint16_t OBSTACLE_DIST_THRESHOLD = 400; // mm
+constexpr float VEL_OBSTACLE = 30.0f;
+constexpr float OBSTACLE_RADIUS = -0.67f; // 避障半径
+constexpr float ANG_OBSTACLE_PRE_TURN = 30.0f; // 预偏转角速度
+constexpr uint32_t OBSTACLE_PRE_TURN_TIME_MS = 100; // 预偏转时间
 
 // 出线检测
 constexpr float OUT_OF_LINE_THRESHOLD = 0.005f;
@@ -136,11 +137,12 @@ class TrackingState : public TrackStateBase
             std::isnan(denom) ? 0.0f : (ctx.trackA * (res.l - res.r) + ctx.trackB * (res.lm - res.rm)) / denom;
         // LOG_INFO("%s\n",float_to_str(ctx.trackErr));
 
-        constexpr float A = 1.0f, B = 0.6f;
+        constexpr float A = 1.0f, B = 0.5f;
         ctx.trackErr = A * ctx.trackErr + B * pow(ctx.trackErr, 3.0); // 误差整形
 
         // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
-        ctx.trackErr = Car_GetTargetVelocity() < 20.0 ? ctx.trackErr : ctx.trackErr *Config::VEL_TRACKING/ Car_GetTargetVelocity();
+        ctx.trackErr = Car_GetTargetVelocity() < 20.0 ? ctx.trackErr
+                                                      : ctx.trackErr * Config::VEL_TRACKING / Car_GetTargetVelocity();
 
         ctx.trackOutput = PID_Update_Positional(&ctx.pid, 0.0f, ctx.trackErr);
         // ctx.SetCarStatus(0.0, 0.0);
@@ -150,10 +152,21 @@ class TrackingState : public TrackStateBase
     {
         Track(ctx, dt);
         // // 2. 避障检测
-        // if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
-        // {
-        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        // }
+        static int TofCount = 0;
+        if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
+        {
+            TofCount++;
+        }
+        else
+        {
+            TofCount -= 2;
+            if (TofCount < 0)
+                TofCount = 0;
+        }
+        if (TofCount >= 20)
+        {
+            return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        }
 
         // // 3. 环岛检测
         // if (Detection::IsRingDetected(ctx))
@@ -211,7 +224,7 @@ class RingState : public TrackingState
     {
         // 复用循迹状态的逻辑
         TrackingState::Track(ctx, dt);
-        //TODO: 完成退出环岛的逻辑
+        // TODO: 完成退出环岛的逻辑
 
         return TRACK_STATE_RING;
     }
@@ -260,15 +273,41 @@ class ObstacleAvoidanceState : public TrackStateBase
   public:
     void Enter(TrackContext &ctx) override
     {
-        ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE);
+        // 关闭安全检测
+        ctx.safetyCheckEnabled = false;
+
+        // 进入预偏转阶段
+        m_isPreTurn = true;
         m_timer = 0;
+        ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
     }
 
-    TrackState Update(TrackContext &, uint32_t dt) override
+    void Exit(TrackContext &ctx) override
     {
-        if ((m_timer += dt) >= Config::OBSTACLE_TIME_MS)
+        // 恢复安全检测
+        ctx.safetyCheckEnabled = true;
+    }
+
+    TrackState Update(TrackContext &ctx, uint32_t dt) override
+    {
+        if (m_isPreTurn)
         {
-            return TRACK_STATE_TRACKING;
+            ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
+            if ((m_timer += dt) >= Config::OBSTACLE_PRE_TURN_TIME_MS)
+            {
+                m_isPreTurn = false;
+                m_timer = 0;
+            }
+            return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        }
+
+        // 持续设置速度，防止被其他地方覆盖
+        float omega = Config::VEL_OBSTACLE / Config::OBSTACLE_RADIUS;
+        ctx.SetCarStatus(Config::VEL_OBSTACLE, omega);
+
+        if ((m_timer += dt) >= m_targetTime)
+        {
+            return TRACK_STATE_STOP;
         }
         return TRACK_STATE_OBSTACLE_AVOIDANCE;
     }
@@ -280,6 +319,8 @@ class ObstacleAvoidanceState : public TrackStateBase
 
   private:
     uint32_t m_timer = 0;
+    uint32_t m_targetTime = 2000;
+    bool m_isPreTurn = true;
 };
 
 // ============================================================================
@@ -410,7 +451,7 @@ static bool CheckSafety(uint32_t dt)
         static uint32_t lastLog = 0;
         if (HAL_GetTick() - lastLog > 1000)
         {
-            LOG_WARN("Safety: Out of line! Sum: %.2f", sum);
+            LOG_INFO("Out of line!");
             lastLog = HAL_GetTick();
         }
         // 触发紧急情况显示 - 丢线
@@ -504,8 +545,8 @@ static void RegisterParameters()
         //  PARAM_MASK_SERIAL},
     };
 
-    for (auto &p : params)
-    {
-        ParamServer_Register(&p);
-    }
+    // for (auto &p : params)
+    // {
+    //     ParamServer_Register(&p);
+    // }
 }

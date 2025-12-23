@@ -164,7 +164,7 @@ void RegisterSystemParams(void)
          .type = PARAM_TYPE_INT,
          .ops.i.get = (ParamGetIntCb)GetTofDistance,
          .read_only = 1,
-         .mask = PARAM_MASK_OLED},
+         .mask = PARAM_MASK_OLED|PARAM_MASK_SERIAL},
     };
 
     for (int i = 0; i < sizeof(params) / sizeof(params[0]); i++)

@@ -12,9 +12,9 @@
 #include <string.h>
 
 #define TOF_I2C_ADDRESS (0x52U)
-#define TOF_SIGNAL_MIN_Mcps (0.3f)
-#define TOF_SNR_MIN_RATIO (3.0f)
-#define TOF_SIGMA_MAX_MM (35.0f)
+#define TOF_SIGNAL_MIN_Mcps (2.0f)
+#define TOF_SNR_MIN_RATIO (6.0f)
+#define TOF_SIGMA_MAX_MM (15.0f)
 
 static VL53L0X_Dev_t s_vl53l0x_dev = {0};
 static VL53L0X_RangingMeasurementData_t s_ranging_data = {0};
@@ -184,6 +184,8 @@ void TofHandler(void)
 				signal >= TOF_SIGNAL_MIN_Mcps &&
 				s_ranging_data.EffectiveSpadRtnCount > 0U) {
 			s_distance_mm = (uint16_t)s_ranging_data.RangeMilliMeter;
+		} else {
+			s_distance_mm = 999;
 		}
 	} else {
 		tof_log_error("GetRangingMeasurementData", status);
