@@ -62,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/param_server.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/s_curve.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/led.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/madgwickFilter.c
 
     )
 

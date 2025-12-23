@@ -3,6 +3,7 @@
 #include "log.h"
 #include "spi.h"
 #include "param_server.h"
+#include "madgwickFilter.h"
 
 // LSM6DS3 SPI接口实现
 static int32_t lsm6ds3_spi_write(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
@@ -101,6 +102,23 @@ static float GetAccelX(void) { return current_accel_data.ax; }
 static float GetAccelY(void) { return current_accel_data.ay; }
 static float GetAccelZ(void) { return current_accel_data.az; }
 
+// 姿态角获取函数
+float IMU_GetRoll(void) { 
+    float roll, pitch, yaw;
+    eulerAngles(q_est, &roll, &pitch, &yaw);
+    return roll; 
+}
+float IMU_GetPitch(void) { 
+    float roll, pitch, yaw;
+    eulerAngles(q_est, &roll, &pitch, &yaw);
+    return pitch; 
+}
+float IMU_GetYaw(void) { 
+    float roll, pitch, yaw;
+    eulerAngles(q_est, &roll, &pitch, &yaw);
+    return yaw; 
+}
+
 void GyroInit()
 {
     LOG_INFO("GyroInit start");
@@ -127,11 +145,11 @@ void AccelInit()
     LOG_INFO("AccelInit start");
     
     // 配置LSM6DS3加速度计部分
-    // 设置加速度计量程为±8g (更高量程)
-    lsm6ds3_xl_full_scale_set(&lsm6ds3_ctx, LSM6DS3_8g);
+    // 设置加速度计量程为±4g (提高精度)
+    lsm6ds3_xl_full_scale_set(&lsm6ds3_ctx, LSM6DS3_4g);
     
-    // 降低采样率以优化性能 (52Hz)
-    lsm6ds3_xl_data_rate_set(&lsm6ds3_ctx, LSM6DS3_XL_ODR_52Hz);
+    // 提高采样率以匹配陀螺仪 (208Hz)
+    lsm6ds3_xl_data_rate_set(&lsm6ds3_ctx, LSM6DS3_XL_ODR_208Hz);
     
     // 设置加速度计为高性能模式
     lsm6ds3_xl_power_mode_set(&lsm6ds3_ctx, LSM6DS3_XL_HIGH_PERFORMANCE);
@@ -216,25 +234,31 @@ void IMUInit()
     /* 注册IMU参数到服务器：陀螺仪和加速度计数据都通过串口输出 */
     static ParamDesc imu_params[] = {
         // 陀螺仪参数
-        { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "GYRO_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "GYRO_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // { .name = "GYRO_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // { .name = "GYRO_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
         
-        // 加速度计参数
-        { .name = "ACCEL_X", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelX, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // // 加速度计参数
+        // { .name = "ACCEL_X", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelX, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+
+        // 姿态角参数
+        { .name = "ATT_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "ATT_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "ATT_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
     };
-    // for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
-    //     ParamServer_Register(&imu_params[i]);
-    // }
+    for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
+        ParamServer_Register(&imu_params[i]);
+    }
     
     LOG_INFO("IMUInit done");
 }
 
-void GyroHandler()
+uint8_t GyroHandler()
 {
     static int16_t gyro_raw[3];
+    uint8_t updated = 0;
     
     // 检查数据是否就绪
     uint8_t data_ready;
@@ -242,6 +266,7 @@ void GyroHandler()
     
     if(data_ready)
     {
+        updated = 1;
         // 读取原始陀螺仪数据
         lsm6ds3_angular_rate_raw_get(&lsm6ds3_ctx, gyro_raw);
 
@@ -278,11 +303,13 @@ void GyroHandler()
 
         // printf("%d,%d,%d\n",gyro_raw[0],gyro_raw[1],gyro_raw[2]);
     }
+    return updated;
 }
 
-void AccelHandler()
+uint8_t AccelHandler()
 {
     static int16_t accel_raw[3];
+    uint8_t updated = 0;
     
     // 检查数据是否就绪
     uint8_t data_ready;
@@ -290,14 +317,18 @@ void AccelHandler()
     
     if(data_ready)
     {
+        updated = 1;
         // 读取原始加速度计数据
         lsm6ds3_acceleration_raw_get(&lsm6ds3_ctx, accel_raw);
 
         // 使用库函数转换单位 (mg -> g)
-        current_accel_data.ax = lsm6ds3_from_fs8g_to_mg(accel_raw[0]) / 1000.0f;
-        current_accel_data.ay = lsm6ds3_from_fs8g_to_mg(accel_raw[1]) / 1000.0f;
-        current_accel_data.az = lsm6ds3_from_fs8g_to_mg(accel_raw[2]) / 1000.0f;
+        // 注意：根据量程不同，转换函数可能需要调整，这里假设库函数会自动处理或我们手动指定
+        // 如果使用 LSM6DS3_4g，LSB 约为 0.122 mg
+        current_accel_data.ax = lsm6ds3_from_fs4g_to_mg(accel_raw[0]) / 1000.0f;
+        current_accel_data.ay = lsm6ds3_from_fs4g_to_mg(accel_raw[1]) / 1000.0f;
+        current_accel_data.az = lsm6ds3_from_fs4g_to_mg(accel_raw[2]) / 1000.0f;
     }
+    return updated;
 }
 
 void IMUHandler()
@@ -311,10 +342,32 @@ void IMUHandler()
     }
     
     // 处理陀螺仪数据
-    GyroHandler();
+    uint8_t gyro_updated = GyroHandler();
     
     // 处理加速度计数据
     AccelHandler();
+    
+    // 如果陀螺仪数据更新了，则更新姿态解算
+    // Madgwick算法依赖于陀螺仪积分，必须在每次陀螺仪更新时调用
+    if (gyro_updated)
+    {
+        // 转换单位：dps -> rad/s
+        // 注意：current_gyro_data.yaw 存储的是 X轴角速度 (见GyroHandler)
+        float gx = current_gyro_data.yaw * (PI / 180.0f);
+        float gy = current_gyro_data.pitch * (PI / 180.0f);
+        float gz = current_gyro_data.roll * (PI / 180.0f);
+        
+        // 加速度计数据直接使用g值
+        float ax = current_accel_data.ax;
+        float ay = current_accel_data.ay;
+        float az = current_accel_data.az;
+        
+        // 简单的防除零保护，如果加速度计数据极小（可能未初始化或故障），则不进行更新
+        if (fabsf(ax) > 0.001f || fabsf(ay) > 0.001f || fabsf(az) > 0.001f)
+        {
+            imu_filter(ax, ay, az, gx, gy, gz);
+        }
+    }
     
     // 更新完整IMU数据
     current_imu_data.gyro = current_gyro_data;

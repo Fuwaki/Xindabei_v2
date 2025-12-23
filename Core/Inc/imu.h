@@ -1,5 +1,5 @@
 #pragma once
-
+#include <stdint.h>
 // 陀螺仪数据结构
 typedef struct
 {
@@ -25,12 +25,12 @@ typedef struct
 
 // 陀螺仪相关函数
 void GyroInit();
-void GyroHandler();
+uint8_t GyroHandler();
 gyro_data GyroGetGyroData();
 
 // 加速度计相关函数
 void AccelInit();
-void AccelHandler();
+uint8_t AccelHandler();
 accel_data AccelGetAccelData();
 
 // 完整IMU相关函数
@@ -38,3 +38,8 @@ void IMUInit();
 void IMUHandler();
 imu_data IMUGetData();
 void IMUPrintData();
+
+// 姿态角获取接口 (单位: 度)
+float IMU_GetRoll();
+float IMU_GetPitch();
+float IMU_GetYaw();
