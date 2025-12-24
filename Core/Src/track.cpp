@@ -120,7 +120,7 @@ class TrackingState : public TrackStateBase
   public:
     TrackingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.00f, 0.0f, 0.0f, 0.0f, 0.02f); // good for v under 37
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.00f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
     void Enter(TrackContext &) override
@@ -190,7 +190,7 @@ class PreRingState : public TrackStateBase
   public:
     PreRingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 14.00f, 0.0f, 0.0f, 0.0f, 0.02f); // good for v under 37
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.50f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
     void Enter(TrackContext &ctx) override
@@ -225,7 +225,7 @@ class RingState : public TrackStateBase
   public:
     RingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 14.00f, 0.0f, 0.0f, 0.0f, 0.02f); // good for v under 37
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.50f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
     void Enter(TrackContext &ctx) override
@@ -298,7 +298,7 @@ class ExitRingState : public TrackStateBase
         PID_Init(&angle_pid, PID_MODE_POSITIONAL, 1.0f, 0.0f, 0.0f, 0.0f, 0.02f);
         PID_SetOutputLimit(&angle_pid, -100.0f, 100.0f);
     }
-    void Enter(TrackContext &ctx) override
+    void Enter(TrackContext &ctx) override 
     {
         LED_Command(4, true);
 
@@ -310,10 +310,17 @@ class ExitRingState : public TrackStateBase
         this->m_timer += dt;
         // TrackingUtils::CalcTrack(ctx, this->pid);
         // ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 20);
-        float angular_output = PID_Update_Positional(&angle_pid, ctx.enterAngle, IMU_GetYaw());
-        ctx.SetCarStatus(0, angular_output);
-        // return ((m_timer += dt) >= 500) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
-        return TRACK_STATE_EXIT_RING;
+
+        // 处理角度跨越 180 度的问题
+        float currentYaw = IMU_GetYaw();
+        float error = ctx.enterAngle - currentYaw;
+        while (error > 180.0f) error -= 360.0f;
+        while (error < -180.0f) error += 360.0f;
+
+        float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);         
+        ctx.SetCarStatus(38, angular_output);
+        return ((m_timer += dt) >= 500) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
+        // return TRACK_STATE_EXIT_RING;
     }
 
     const char *Name() const override
