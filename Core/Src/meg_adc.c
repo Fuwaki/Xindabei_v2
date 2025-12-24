@@ -7,6 +7,7 @@
 #include "param_server.h"
 #include "portmacro.h"
 #include "task.h"
+#include <math.h>
 
 #define ADS1220_VREF 2.048f
 #define ADS1220_GAIN 1.0f
@@ -207,7 +208,8 @@ void MegAdcHandler()
     ADS1220_StartAndWait();
     g_adc_result.rm = ADS1220_CodeToVoltage(ADS1220ReadData());
 
-    g_adc_result.m = ADC1_CodeToVoltage(adc1_buffer);
+    // g_adc_result.m = ADC1_CodeToVoltage(adc1_buffer);
+    g_adc_result.m=fabsf(g_adc_result.l)+fabsf(g_adc_result.lm)+fabsf(g_adc_result.r)+fabsf(g_adc_result.rm);
 }
 
 adc_result MegAdcGetResult()
@@ -221,8 +223,9 @@ adc_result MegAdcGetCalibratedResult()
     adc_result calibrated;
     calibrated.l = raw.l * adc_calibrations[0].k + adc_calibrations[0].b;
     calibrated.lm = raw.lm * adc_calibrations[1].k + adc_calibrations[1].b;
-    calibrated.m = raw.m * adc_calibrations[2].k + adc_calibrations[2].b;
     calibrated.rm = raw.rm * adc_calibrations[3].k + adc_calibrations[3].b;
     calibrated.r = raw.r * adc_calibrations[4].k + adc_calibrations[4].b;
+    // calibrated.m = raw.m * adc_calibrations[2].k + adc_calibrations[2].b;
+    calibrated.m=fabsf(calibrated.l)+fabsf(calibrated.r);
     return calibrated;
 }
