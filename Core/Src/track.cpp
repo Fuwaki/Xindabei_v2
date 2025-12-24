@@ -3,6 +3,7 @@
 #include "fsm.hpp"
 #include "led.h"
 #include <cmath>
+#include <stdint.h>
 
 extern "C"
 {
@@ -34,18 +35,7 @@ constexpr float ANG_RING = 0.8f;
 constexpr float VEL_EXIT = 2.0f;
 constexpr float ANG_EXIT = -0.5f;
 constexpr float VEL_TRACKING = 40.0f;
-
-constexpr float ROLL_OVER_ANGLE = 40.0f;
-
-// 避障参数
-constexpr uint16_t OBSTACLE_DIST_THRESHOLD = 400; // mm
-constexpr float VEL_OBSTACLE = 30.0f;
-constexpr float OBSTACLE_RADIUS = -0.67f; // 避障半径
-constexpr float ANG_OBSTACLE_PRE_TURN = 30.0f; // 预偏转角速度
-constexpr uint32_t OBSTACLE_PRE_TURN_TIME_MS = 100; // 预偏转时间
-
 // 出线检测
-constexpr float OUT_OF_LINE_THRESHOLD = 0.005f;
 } // namespace Config
 
 // ============================================================================
@@ -53,15 +43,12 @@ constexpr float OUT_OF_LINE_THRESHOLD = 0.005f;
 // ============================================================================
 struct TrackContext
 {
-    // PID控制器
-    PIDController pid;
-
     // 循迹参数
     float trackA = 1.0f;
-    float trackB = 0.5f;
+    float trackB = 0.9f;
     float trackErr = 0.0f;
     float trackOutput = 0.0f;
-    float outOfLineThreshold = Config::OUT_OF_LINE_THRESHOLD;
+    float outOfLineThreshold = 0.0005;
 
     // 安全检测
     uint32_t safetyTimer = 0;
@@ -98,6 +85,30 @@ bool IsExitRingDetected(TrackContext &)
 using TrackStateMachine = StateMachine<TrackState, TrackContext>;
 using TrackStateBase = IState<TrackContext, TrackState>;
 
+class TrackingUtils
+{
+public:
+    static void CalcTrack(TrackContext &ctx, PIDController &pid)
+    {
+        auto res = MegAdcGetCalibratedResult();
+        float denom = ctx.trackA * (res.l + res.r) + ctx.trackB * (res.lm + res.rm);
+
+        ctx.trackErr =
+            std::isnan(denom) ? 0.0f : (ctx.trackA * (res.l - res.r) + ctx.trackB * (res.lm - res.rm)) / denom;
+        // LOG_INFO("%s\n",float_to_str(ctx.trackErr));
+
+        constexpr float A = 1.0f, B = 0.5f;
+        ctx.trackErr = A * ctx.trackErr + B * pow(ctx.trackErr, 3.0); // 误差整形
+
+        // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
+        ctx.trackErr = Car_GetTargetVelocity() < 20.0 ? ctx.trackErr
+                                                      : ctx.trackErr * Config::VEL_TRACKING / Car_GetTargetVelocity();
+
+        ctx.trackOutput = PID_Update_Positional(&pid, 0.0f, ctx.trackErr);
+        // ctx.SetCarStatus(0.0, 0.0);
+    }
+};
+
 // 停止状态
 class StopState : public TrackStateBase
 {
@@ -121,52 +132,38 @@ class StopState : public TrackStateBase
 class TrackingState : public TrackStateBase
 {
   public:
+    TrackingState()
+    {
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 15.00f, 0.0f, 0.0f, 0.0f, 0.02f);         //good for v under 37
+        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
+    }
     void Enter(TrackContext &) override
     {
         LED_Command(2, true);
 
         m_timer = 0;
     }
-    // 循迹主体 输出目标角速度来让小车在线上
-    void Track(TrackContext &ctx, uint32_t dt)
-    {
-        auto res = MegAdcGetCalibratedResult();
-        float denom = ctx.trackA * (res.l + res.r) + ctx.trackB * (res.lm + res.rm);
-
-        ctx.trackErr =
-            std::isnan(denom) ? 0.0f : (ctx.trackA * (res.l - res.r) + ctx.trackB * (res.lm - res.rm)) / denom;
-        // LOG_INFO("%s\n",float_to_str(ctx.trackErr));
-
-        constexpr float A = 1.0f, B = 0.5f;
-        ctx.trackErr = A * ctx.trackErr + B * pow(ctx.trackErr, 3.0); // 误差整形
-
-        // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
-        ctx.trackErr = Car_GetTargetVelocity() < 20.0 ? ctx.trackErr
-                                                      : ctx.trackErr * Config::VEL_TRACKING / Car_GetTargetVelocity();
-
-        ctx.trackOutput = PID_Update_Positional(&ctx.pid, 0.0f, ctx.trackErr);
-        // ctx.SetCarStatus(0.0, 0.0);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
-    }
+    
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        Track(ctx, dt);
-        // // 2. 避障检测
-        static int TofCount = 0;
-        if (TofGetDistance() < Config::OBSTACLE_DIST_THRESHOLD)
-        {
-            TofCount++;
-        }
-        else
-        {
-            TofCount -= 2;
-            if (TofCount < 0)
-                TofCount = 0;
-        }
-        if (TofCount >= 20)
-        {
-            return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        }
+        TrackingUtils::CalcTrack(ctx, this->pid);
+        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
+        // // // 2. 避障检测
+        // static int TofCount = 0;
+        // if (TofGetDistance() < OBSTACLE_DIST_THRESHOLD)
+        // {
+        //     TofCount++;
+        // }
+        // else
+        // {
+        //     TofCount -= 2;
+        //     if (TofCount < 0)
+        //         TofCount = 0;
+        // }
+        // if (TofCount >= 20)
+        // {
+        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        // }
 
         // // 3. 环岛检测
         // if (Detection::IsRingDetected(ctx))
@@ -188,6 +185,8 @@ class TrackingState : public TrackStateBase
 
   private:
     uint32_t m_timer = 0;
+    PIDController pid={};
+    constexpr static float OBSTACLE_DIST_THRESHOLD = 400; 
 };
 
 // 预环岛状态 通过打角让小车进入环岛 退出条件是时间到达或者中路电感不再检测到环岛入口
@@ -214,16 +213,21 @@ class PreRingState : public TrackStateBase
     uint32_t m_timer = 0;
 };
 
-class RingState : public TrackingState
+class RingState : public TrackStateBase
 {
   public:
+    RingState()
+    {
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 18.00f, 0.0f, 0.0f, 0.0f, 0.02f);         //good for v under 37
+        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
+    }
     void Enter(TrackContext &ctx) override
     {
     }
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         // 复用循迹状态的逻辑
-        TrackingState::Track(ctx, dt);
+        TrackingUtils::CalcTrack(ctx, this->pid);
         // TODO: 完成退出环岛的逻辑
 
         return TRACK_STATE_RING;
@@ -232,6 +236,8 @@ class RingState : public TrackingState
     {
         return "RING";
     }
+  private:
+    PIDController pid={};
 };
 
 // 出环岛状态 同预环岛 打角一段时间后退出
@@ -240,7 +246,6 @@ class ExitRingState : public TrackStateBase
   public:
     void Enter(TrackContext &ctx) override
     {
-        ctx.SetCarStatus(Config::VEL_EXIT, Config::ANG_EXIT);
         m_timer = 0;
     }
 
@@ -280,9 +285,6 @@ class ObstacleAvoidanceState : public TrackStateBase
     {
         // 关闭安全检测
         ctx.safetyCheckEnabled = false;
-
-        // 进入预偏转阶段
-        m_isPreTurn = true;
         m_timer = 0;
         this->origin_angle=IMU_GetYaw();
     }
@@ -295,27 +297,34 @@ class ObstacleAvoidanceState : public TrackStateBase
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        // if (m_isPreTurn)
-        // {
-        //     ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
-        //     if ((m_timer += dt) >= Config::OBSTACLE_PRE_TURN_TIME_MS)
-        //     {
-        //         m_isPreTurn = false;
-        //         m_timer = 0;
-        //     }
-        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        // }
-
-        // // 持续设置速度，防止被其他地方覆盖
-        // float omega = Config::VEL_OBSTACLE / Config::OBSTACLE_RADIUS;
-        // ctx.SetCarStatus(Config::VEL_OBSTACLE, omega);
-
-        // if ((m_timer += dt) >= m_targetTime)
-        // {
-        //     return TRACK_STATE_STOP;
-        // }
-        float angular_output= PID_Update_Positional(&angle_pid, this->target_angle, IMU_GetYaw());
-        ctx.SetCarStatus(0,angular_output );
+        if (second_phase)
+        {
+            // 第二阶段 左打60度 直到重回线上
+            float angular_output= PID_Update_Positional(&angle_pid, this->origin_angle-60.0, IMU_GetYaw());
+            ctx.SetCarStatus(0, angular_output);
+            // 判断是否重新回到线上
+            // if(fabsf(ctx.trackErr)>100.0)
+            {
+                // 退出避障状态
+                // return TRACK_STATE_STOP;
+            }
+            
+        }
+        else
+        {
+            // 第一阶段 先向右打60度 走指定路程
+            float angular_output= PID_Update_Positional(&angle_pid, this->origin_angle+60.0, IMU_GetYaw());
+            ctx.SetCarStatus(Config::VEL_TRACKING, angular_output);
+            this->m_timer += dt;
+            // 判断是否已经走了足够的时间
+            //  if (this->m_timer >=(uint32_t) (35*2*50 / Car_GetTargetVelocity()))
+            if (this->m_timer >= 1000)
+            {
+                // 进入第二阶段
+                this->second_phase = true;
+                this->m_timer = 0;
+            }
+        }
         return TRACK_STATE_OBSTACLE_AVOIDANCE;
     }
 
@@ -326,11 +335,10 @@ class ObstacleAvoidanceState : public TrackStateBase
 
   private:
     uint32_t m_timer = 0;
-    uint32_t m_targetTime = 2000;
-    float target_angle = 0;
-    float origin_angle=0;
-    bool m_isPreTurn = true;
-    PIDController angle_pid={};
+    float origin_angle = 0;
+    bool second_phase = false;
+    PIDController angle_pid = {};
+    constexpr static float POLYLINE_LENGTH = 0.4f;
 };
 
 // ============================================================================
@@ -361,16 +369,11 @@ extern "C"
         s_fsm.RegisterState(TRACK_STATE_EXIT_RING, std::make_unique<ExitRingState>());
         s_fsm.RegisterState(TRACK_STATE_OBSTACLE_AVOIDANCE, std::make_unique<ObstacleAvoidanceState>());
 
-        // 初始化PID
-        auto &ctx = s_fsm.GetContext();
-        PID_Init(&ctx.pid, PID_MODE_POSITIONAL, 18.00f, 0.0f, 0.0f, 0.0f, 0.02f);
-        PID_SetOutputLimit(&ctx.pid, -100.0f, 50.0f);
-
         // 注册参数
         RegisterParameters();
 
         // 设置初始状态
-        s_fsm.ChangeState(TRACK_STATE_OBSTACLE_AVOIDANCE);
+        s_fsm.ChangeState(TRACK_STATE_STOP);
     }
 
     void TrackHandler(void)
@@ -469,28 +472,7 @@ static bool CheckSafety(uint32_t dt)
         hasEmergency = true;
     }
 
-    // 2. 翻车检测
-    imu_data imu = IMUGetData();
-    float roll = atan2f(imu.accel.ay, imu.accel.az) * 180.0f / M_PI;
-    float pitch =
-        atan2f(-imu.accel.ax, sqrtf(imu.accel.ay * imu.accel.ay + imu.accel.az * imu.accel.az)) * 180.0f / M_PI;
 
-    if (fabsf(roll) > Config::ROLL_OVER_ANGLE || fabsf(pitch) > Config::ROLL_OVER_ANGLE)
-    {
-        ctx.safetyTimer += dt;
-        if (ctx.safetyTimer >= Config::ROLL_OVER_MS)
-        {
-            LOG_WARN("ROLL OVER DETECTED!");
-            // 触发紧急情况显示 - 翻车
-            OledServiceSetEmergency(OLED_EMERGENCY_ROLL_OVER, "ROLL OVER!");
-            ctx.safetyTimer = 0;
-            hasEmergency = true;
-        }
-    }
-    else
-    {
-        ctx.safetyTimer = 0;
-    }
 
     // 只有在没有检测到任何紧急情况时才清除紧急显示
     if (!hasEmergency)
