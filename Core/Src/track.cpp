@@ -34,7 +34,7 @@ constexpr float VEL_RING = 1.5f;
 constexpr float ANG_RING = 0.8f;
 constexpr float VEL_EXIT = 2.0f;
 constexpr float ANG_EXIT = -0.5f;
-constexpr float VEL_TRACKING = 40.0f;
+constexpr float VEL_TRACKING = 42.0f;
 // 出线检测
 } // namespace Config
 
@@ -45,7 +45,7 @@ struct TrackContext
 {
     // 循迹参数
     float trackA = 1.0f;
-    float trackB = 0.9f;
+    float trackB = 1.0f;
     float trackErr = 0.0f;
     float trackOutput = 0.0f;
     float outOfLineThreshold = 0.0005;

@@ -153,10 +153,10 @@ static void MegAdcRegisterParams(void)
          .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
     };
 
-    // for (int i = 0; i < (int)(sizeof(meg_params) / sizeof(meg_params[0])); ++i)
-    // {
-    //     ParamServer_Register(&meg_params[i]);
-    // }
+    for (int i = 0; i < (int)(sizeof(meg_params) / sizeof(meg_params[0])); ++i)
+    {
+        ParamServer_Register(&meg_params[i]);
+    }
 }
 
 void MegAdcInit()
