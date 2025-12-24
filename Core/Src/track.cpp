@@ -271,6 +271,11 @@ class ExitRingState : public TrackStateBase
 class ObstacleAvoidanceState : public TrackStateBase
 {
   public:
+    ObstacleAvoidanceState()
+    {
+        PID_Init(&angle_pid, PID_MODE_POSITIONAL, 1.0f, 0.0f, 0.0f, 0.0f, 0.02f);
+        PID_SetOutputLimit(&angle_pid, -100.0f, 100.0f);
+    }
     void Enter(TrackContext &ctx) override
     {
         // 关闭安全检测
@@ -279,7 +284,7 @@ class ObstacleAvoidanceState : public TrackStateBase
         // 进入预偏转阶段
         m_isPreTurn = true;
         m_timer = 0;
-        ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
+        this->origin_angle=IMU_GetYaw();
     }
 
     void Exit(TrackContext &ctx) override
@@ -290,25 +295,27 @@ class ObstacleAvoidanceState : public TrackStateBase
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        if (m_isPreTurn)
-        {
-            ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
-            if ((m_timer += dt) >= Config::OBSTACLE_PRE_TURN_TIME_MS)
-            {
-                m_isPreTurn = false;
-                m_timer = 0;
-            }
-            return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        }
+        // if (m_isPreTurn)
+        // {
+        //     ctx.SetCarStatus(Config::VEL_OBSTACLE, Config::ANG_OBSTACLE_PRE_TURN);
+        //     if ((m_timer += dt) >= Config::OBSTACLE_PRE_TURN_TIME_MS)
+        //     {
+        //         m_isPreTurn = false;
+        //         m_timer = 0;
+        //     }
+        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        // }
 
-        // 持续设置速度，防止被其他地方覆盖
-        float omega = Config::VEL_OBSTACLE / Config::OBSTACLE_RADIUS;
-        ctx.SetCarStatus(Config::VEL_OBSTACLE, omega);
+        // // 持续设置速度，防止被其他地方覆盖
+        // float omega = Config::VEL_OBSTACLE / Config::OBSTACLE_RADIUS;
+        // ctx.SetCarStatus(Config::VEL_OBSTACLE, omega);
 
-        if ((m_timer += dt) >= m_targetTime)
-        {
-            return TRACK_STATE_STOP;
-        }
+        // if ((m_timer += dt) >= m_targetTime)
+        // {
+        //     return TRACK_STATE_STOP;
+        // }
+        float angular_output= PID_Update_Positional(&angle_pid, this->target_angle, IMU_GetYaw());
+        ctx.SetCarStatus(0,angular_output );
         return TRACK_STATE_OBSTACLE_AVOIDANCE;
     }
 
@@ -320,7 +327,10 @@ class ObstacleAvoidanceState : public TrackStateBase
   private:
     uint32_t m_timer = 0;
     uint32_t m_targetTime = 2000;
+    float target_angle = 0;
+    float origin_angle=0;
     bool m_isPreTurn = true;
+    PIDController angle_pid={};
 };
 
 // ============================================================================
@@ -360,7 +370,7 @@ extern "C"
         RegisterParameters();
 
         // 设置初始状态
-        s_fsm.ChangeState(TRACK_STATE_STOP);
+        s_fsm.ChangeState(TRACK_STATE_OBSTACLE_AVOIDANCE);
     }
 
     void TrackHandler(void)

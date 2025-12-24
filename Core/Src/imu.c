@@ -234,23 +234,23 @@ void IMUInit()
     /* 注册IMU参数到服务器：陀螺仪和加速度计数据都通过串口输出 */
     static ParamDesc imu_params[] = {
         // 陀螺仪参数
-        // { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        // { .name = "GYRO_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        // { .name = "GYRO_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
+        { .name = "GYRO_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL |PARAM_MASK_OLED},
+        { .name = "GYRO_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
         
-        // // 加速度计参数
-        // { .name = "ACCEL_X", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelX, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        // { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        // { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        // 加速度计参数
+        { .name = "ACCEL_X", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelX, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
+        { .name = "ACCEL_Y", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelY, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
+        { .name = "ACCEL_Z", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetAccelZ, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
 
         // 姿态角参数
-        { .name = "ATT_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "ATT_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL },
-        { .name = "ATT_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL },
+        { .name = "ATT_ROLL", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetRoll, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
+        { .name = "ATT_PITCH", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetPitch, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
+        { .name = "ATT_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = IMU_GetYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
     };
-    for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
-        ParamServer_Register(&imu_params[i]);
-    }
+    // for (int i = 0; i < sizeof(imu_params)/sizeof(imu_params[0]); i++) {
+    //     ParamServer_Register(&imu_params[i]);
+    // }
     
     LOG_INFO("IMUInit done");
 }
@@ -276,9 +276,11 @@ uint8_t GyroHandler()
         float gyro_z_dps = lsm6ds3_from_fs2000dps_to_mdps(gyro_raw[2]) / 1000.0f;
 
         // 减去零漂 (已转换为dps)
-        current_gyro_data.yaw = gyro_x_dps - gyro_bias[0];
-        current_gyro_data.pitch = gyro_y_dps - gyro_bias[1];
-        current_gyro_data.roll = gyro_z_dps - gyro_bias[2];
+        // 修正映射关系：X->Roll, Y->Pitch, Z->Yaw
+        // 之前代码：Yaw=X, Pitch=Y, Roll=Z (导致错配)
+        current_gyro_data.roll = gyro_x_dps - gyro_bias[0];  // X轴围绕X轴旋转 -> Roll
+        current_gyro_data.pitch = gyro_y_dps - gyro_bias[1]; // Y轴围绕Y轴旋转 -> Pitch
+        current_gyro_data.yaw = gyro_z_dps - gyro_bias[2];   // Z轴围绕Z轴旋转 -> Yaw
 
         // 一阶低通滤波器实现
         if (!gyro_filter_initialized)
@@ -290,12 +292,12 @@ uint8_t GyroHandler()
         else
         {
             // 一阶低通滤波器公式: filtered = alpha * new + (1 - alpha) * filtered
-            filtered_gyro_data.yaw = GYRO_FILTER_ALPHA * current_gyro_data.yaw +
-                                   (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.yaw;
-            filtered_gyro_data.pitch = GYRO_FILTER_ALPHA * current_gyro_data.pitch +
-                                     (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.pitch;
             filtered_gyro_data.roll = GYRO_FILTER_ALPHA * current_gyro_data.roll +
                                     (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.roll;
+            filtered_gyro_data.pitch = GYRO_FILTER_ALPHA * current_gyro_data.pitch +
+                                     (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.pitch;
+            filtered_gyro_data.yaw = GYRO_FILTER_ALPHA * current_gyro_data.yaw +
+                                   (1.0f - GYRO_FILTER_ALPHA) * filtered_gyro_data.yaw;
         }
 
         // 更新当前陀螺仪数据为滤波后的数据
@@ -352,12 +354,13 @@ void IMUHandler()
     if (gyro_updated)
     {
         // 转换单位：dps -> rad/s
-        // 注意：current_gyro_data.yaw 存储的是 X轴角速度 (见GyroHandler)
-        float gx = current_gyro_data.yaw * (PI / 180.0f);
+        // 映射关系已修正：Roll->X, Pitch->Y, Yaw->Z
+        float gx = current_gyro_data.roll * (PI / 180.0f);
         float gy = current_gyro_data.pitch * (PI / 180.0f);
-        float gz = current_gyro_data.roll * (PI / 180.0f);
+        float gz = current_gyro_data.yaw * (PI / 180.0f);
         
         // 加速度计数据直接使用g值
+        // 确保加速度计轴向与陀螺仪一致：Ax->X, Ay->Y, Az->Z
         float ax = current_accel_data.ax;
         float ay = current_accel_data.ay;
         float az = current_accel_data.az;
@@ -396,8 +399,10 @@ void IMUPrintData()
     imu_data data = IMUGetData();
     
     LOG_INFO("IMU Data:");
-    LOG_INFO("  Gyro (dps): Yaw=%.2f, Pitch=%.2f, Roll=%.2f",
-             data.gyro.yaw, data.gyro.pitch, data.gyro.roll);
+    LOG_INFO("  Gyro (dps): Roll(X)=%.2f, Pitch(Y)=%.2f, Yaw(Z)=%.2f",
+             data.gyro.roll, data.gyro.pitch, data.gyro.yaw);
     LOG_INFO("  Accel (g): Ax=%.3f, Ay=%.3f, Az=%.3f",
              data.accel.ax, data.accel.ay, data.accel.az);
+    LOG_INFO("  Attitude (deg): Roll=%.2f, Pitch=%.2f, Yaw=%.2f",
+             IMU_GetRoll(), IMU_GetPitch(), IMU_GetYaw());
 }

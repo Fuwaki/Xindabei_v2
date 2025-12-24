@@ -36,7 +36,7 @@ void CarControlHandler()
     // // TODO: 增加前馈
     // // TODO: 限幅, target_angular_velocity
     float angular_velocity_output =
-        PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, -ImuData.gyro.roll);
+        PID_Update_Positional(&angular_velocity_pid, target_angular_velocity, -ImuData.gyro.yaw);
     // if (fabsf(angular_velocity_output) < 5.2)angular_velocity_output=0;         //平衡齿轮间隙带来的震荡
     // //正为顺时针
     //
