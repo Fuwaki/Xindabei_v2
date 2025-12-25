@@ -26,7 +26,7 @@ void CarControlInit()
     // PID_EnableTD(&angular_velocity_pid, 0.2);
     
     PID_SetIntegralLimit(&angular_velocity_pid, -10.0, 10.0);    
-    SCurve_Init(&speed_scurve, 70.0f, 10.f, 40.f, 10.f, 30.f);
+    SCurve_Init(&speed_scurve, 100.0f, 20.f, 50.f, 10.f, 30.f);
     LOG_INFO("CarControlInit done");
 }
 

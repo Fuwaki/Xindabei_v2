@@ -24,7 +24,7 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr float VEL_TRACKING = 42.0f;
+constexpr float VEL_TRACKING = 50.0f;
 constexpr float OUT_OF_LINE_THRESHOLD = 0.007;
 // 出线检测
 } // namespace Config
@@ -110,7 +110,7 @@ class TrackingUtils
         }
     };
 
-    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.5, float k1 = 1.0,
+    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.0, float k1 = 1.0,
                           float k2 = 0.2)
     {
         auto res = MegAdcGetCalibratedResult();
@@ -157,7 +157,8 @@ class TrackingState : public TrackStateBase
   public:
     TrackingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.00f, 0.0f, 0.3f, 0.0f, 0.02f); // good for v under 37
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 26.00f, 0.0f, 0.7f, 0.0f, 0.01f); // good for v under 37
+        // PID_EnableTD(&this->pid, 600.0);
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
     void Enter(TrackContext &) override
@@ -175,34 +176,34 @@ class TrackingState : public TrackStateBase
 
         auto res = MegAdcGetCalibratedResult();
 
-        // 直角弯检测
-        if (m_rightAngleFilter.Update(
-                fabsf(res.l - res.r) <= 0.3f && fabsf(res.lm - res.rm) >= 0.3f && (res.lm > 0.6 || res.rm > 0.6), 5))
-        {
-            m_rightAngleFilter.Reset();
-            float currentYaw = IMU_GetYaw();
-            // 判断转向方向: lm > rm -> 左转, rm > lm -> 右转
-            if (res.lm < res.rm)
-            {
-                ctx.turnTargetYaw = currentYaw + 90.0f;
-            }
-            else
-            {
-                ctx.turnTargetYaw = currentYaw - 90.0f;
-            }
+        // // 直角弯检测
+        // if (m_rightAngleFilter.Update(
+        //         fabsf(res.l - res.r) <= 0.3f && fabsf(res.lm - res.rm) >= 0.3f && (res.lm > 0.6 || res.rm > 0.6), 5))
+        // {
+        //     m_rightAngleFilter.Reset();
+        //     float currentYaw = IMU_GetYaw();
+        //     // 判断转向方向: lm > rm -> 左转, rm > lm -> 右转
+        //     if (res.lm < res.rm)
+        //     {
+        //         ctx.turnTargetYaw = currentYaw + 90.0f;
+        //     }
+        //     else
+        //     {
+        //         ctx.turnTargetYaw = currentYaw - 90.0f;
+        //     }
 
-            // 归一化目标角度到 [-180, 180]
-            ctx.turnTargetYaw = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw);
+        //     // 归一化目标角度到 [-180, 180]
+        //     ctx.turnTargetYaw = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw);
 
-            return TRACK_STATE_RIGHT_ANGLE;
-        }
+        //     return TRACK_STATE_RIGHT_ANGLE;
+        // }
 
-        // 3. 环岛检测
-        if (m_ringFilter.Update(res.m >= 1.6 || m_ringFilter.count >= 5, 20))
-        {
-            m_ringFilter.Reset();
-            return TRACK_STATE_PRE_RING;
-        }
+        // // 3. 环岛检测
+        // if (m_ringFilter.Update(res.m >= 1.6 || m_ringFilter.count >= 5, 20))
+        // {
+        //     m_ringFilter.Reset();
+        //     return TRACK_STATE_PRE_RING;
+        // }
         return TRACK_STATE_TRACKING;
     }
 

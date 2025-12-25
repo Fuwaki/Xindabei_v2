@@ -344,7 +344,13 @@ void StartDefaultTask(void *argument)
                 {
                     // Short press - reset state machine
                     TrackSetCommand(TRACK_CMD_RESET);
-                }
+                }        // // 3. 环岛检测
+        // if (m_ringFilter.Update(res.m >= 1.6 || m_ringFilter.count >= 5, 20))
+        // {
+        //     m_ringFilter.Reset();
+        //     return TRACK_STATE_PRE_RING;
+        // }
+        // return TRACK_STATE_TRACKING;
             }
         }
 
@@ -498,7 +504,7 @@ void TrackTaskFunc(void *argument)
     /* Infinite loop */
     TrackInit();
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(20); // 20ms 周期
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 20ms 周期
     for (;;)
     {
         TrackHandler();
