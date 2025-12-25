@@ -37,7 +37,6 @@ accel_data AccelGetAccelData();
 void IMUInit();
 void IMUHandler();
 imu_data IMUGetData();
-void IMUPrintData();
 
 // 姿态角获取接口 (单位: 度)
 float IMU_GetRoll();

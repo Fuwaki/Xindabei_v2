@@ -184,8 +184,8 @@ void MotorInit()
     // error_min: 误差阈值下限 (counts)，小于此值认为噪声
     // error_max: 误差阈值上限 (counts)，大于此值认为运动
     // dt      : 采样周期（由速度环调用频率决定，这里是 0.01s 对应 100Hz）
-    EncPLL_Init(&motor1_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
-    EncPLL_Init(&motor2_pll, 0.4f, 10.0f, 1.3f, 0.7f, 2.7f, 0.005f);
+    EncPLL_Init(&motor1_pll, 0.5f, 20.0f, 1.25f, 0.7f, 2.7f, 0.005f);
+    EncPLL_Init(&motor2_pll, 0.5f, 20.0f, 1.25f, 0.7f, 2.7f, 0.005f);
 
     PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.09f, 0.09f, 0.0f, 0.035f, 0.005f);
     PID_SetIntegralLimit(&motor1_speed_pid, -6.0, 6.0);

@@ -20,7 +20,7 @@ void CarControlInit()
     // 移除D项（设为0），因为陀螺仪噪声经微分后会引起震荡
     // 适当提高P项以增强响应，I项用于消除稳态误差
     // 保留前馈 Kf=2.9 以提高动态响应速度
-    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 0.03, 0.0, 0.0, 0.9, 0.01); 
+    PID_Init(&angular_velocity_pid, PID_MODE_POSITIONAL, 0.04, 0.0, 0.0, 0.9, 0.01); 
     
     // 禁用TD（微分跟踪器），减少计算延迟，直接响应
     // PID_EnableTD(&angular_velocity_pid, 0.2);

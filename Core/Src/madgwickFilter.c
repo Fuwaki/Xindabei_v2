@@ -118,6 +118,30 @@ void imu_filter(float ax, float ay, float az, float gx, float gy, float gz){
    
 }
 
+void imu_filter_gyro_only(float gx, float gy, float gz){
+    // Variables
+    struct quaternion q_est_prev = q_est;
+    struct quaternion q_w;                   // equation (10), places gyroscope readings in a quaternion
+    struct quaternion q_est_dot;
+
+    // Integrate angluar velocity to obtain position in angles.
+    q_w.q1 = 0;
+    q_w.q2 = gx;
+    q_w.q3 = gy;
+    q_w.q4 = gz;
+    
+    quat_scalar(&q_w, 0.5f);                  // equation (12) dq/dt = (1/2)q*w
+    q_w = quat_mult(q_est_prev, q_w);        // equation (12)
+
+    // Without accelerometer correction, q_est_dot is just q_w
+    q_est_dot = q_w;
+
+    // Integrate
+    quat_scalar(&q_est_dot, DELTA_T);
+    quat_add(&q_est, q_est_prev, q_est_dot);     // Integrate orientation rate to find position
+    quat_Normalization(&q_est);                 // normalize the orientation of the estimate
+}
+
 /*
  returns as pointers, roll pitch and yaw from the quaternion generated in imu_filter
  Assume right hand system

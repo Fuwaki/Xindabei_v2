@@ -2,10 +2,8 @@
 #include "common.h"
 #include "fsm.hpp"
 #include "led.h"
-#include <algorithm>
 #include <cmath>
 #include <stdint.h>
-#include <type_traits>
 
 extern "C"
 {
@@ -26,15 +24,6 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr uint32_t IN_RING_MS = 1000;
-constexpr uint32_t ROLL_OVER_MS = 200;
-
-constexpr float VEL_PRE_RING = 2.0f;
-constexpr float ANG_PRE_RING = 1.0f;
-constexpr float VEL_RING = 1.5f;
-constexpr float ANG_RING = 0.8f;
-constexpr float VEL_EXIT = 2.0f;
-constexpr float ANG_EXIT = -0.5f;
 constexpr float VEL_TRACKING = 42.0f;
 constexpr float OUT_OF_LINE_THRESHOLD = 0.007;
 // 出线检测
@@ -152,7 +141,6 @@ class StopState : public TrackStateBase
     }
     TrackState Update(TrackContext &ctx, uint32_t) override
     {
-
         LED_Command(1, true);
         ctx.SetCarStatus(0, 0.0);
         return TRACK_STATE_STOP;
@@ -245,15 +233,14 @@ class PreRingState : public TrackStateBase
         LED_Command(4, true);
 
         ctx.enterAngle = IMU_GetYaw() + 15;
-        m_timer = 0;
+        m_timer.Reset();
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        this->m_timer += dt;
         TrackingUtils::CalcTrack(ctx, this->pid);
         ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput + 14);
-        return ((m_timer += dt) >= 500) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
+        return m_timer.Update(true, dt, 250) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
     }
 
     const char *Name() const override
@@ -263,7 +250,7 @@ class PreRingState : public TrackStateBase
 
   private:
     PIDController pid = {};
-    uint32_t m_timer = 0;
+    TrackingUtils::TimeFilter m_timer;
 };
 
 class RingState : public TrackStateBase
@@ -271,12 +258,13 @@ class RingState : public TrackStateBase
   public:
     RingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.50f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.00f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
     void Enter(TrackContext &ctx) override
     {
         LED_Command(2, true);
+        m_timer.Reset();
     }
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
@@ -309,10 +297,8 @@ class RingState : public TrackStateBase
 
         // 如果角度差小于阈值（例如 15 度），则认为已经转了一圈回到入口方向
         // 还需要加一个最小时间限制，防止刚进环岛就误判退出
-        m_timer += dt;
-        if (m_timer > 500 && diff < 15.0f)
+        if (m_timer.Update(true, dt, 500) && diff < 15.0f)
         {
-            m_timer = 0;
             return TRACK_STATE_EXIT_RING;
         }
 
@@ -325,7 +311,7 @@ class RingState : public TrackStateBase
 
   private:
     PIDController pid = {};
-    uint32_t m_timer = 0;
+    TrackingUtils::TimeFilter m_timer;
 };
 
 // 出环岛状态 同预环岛 打角一段时间后退出
@@ -334,8 +320,6 @@ class ExitRingState : public TrackStateBase
   public:
     ExitRingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 14.00f, 0.0f, 0.0f, 0.0f, 0.02f); // good for v under 37
-        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
         PID_Init(&angle_pid, PID_MODE_POSITIONAL, 1.0f, 0.0f, 0.0f, 0.0f, 0.02f);
         PID_SetOutputLimit(&angle_pid, -100.0f, 100.0f);
     }
@@ -343,12 +327,11 @@ class ExitRingState : public TrackStateBase
     {
         LED_Command(4, true);
 
-        m_timer = 0;
+        m_timer.Reset();
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        this->m_timer += dt;
         // TrackingUtils::CalcTrack(ctx, this->pid);
         // ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 20);
 
@@ -358,7 +341,7 @@ class ExitRingState : public TrackStateBase
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
         ctx.SetCarStatus(38, angular_output);
-        return ((m_timer += dt) >= 500) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
+        return m_timer.Update(true, dt, 250) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
         // return TRACK_STATE_EXIT_RING;
     }
 
@@ -368,10 +351,9 @@ class ExitRingState : public TrackStateBase
     }
 
   private:
-    PIDController pid = {};
     PIDController angle_pid = {};
 
-    uint32_t m_timer = 0;
+    TrackingUtils::TimeFilter m_timer;
 };
 
 // 直角弯状态
@@ -386,13 +368,11 @@ class RightAngleTurnState : public TrackStateBase
     void Enter(TrackContext &ctx) override
     {
         LED_Command(4, true);
-        m_timer = 0;
+        m_timer.Reset();
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
-        m_timer += dt;
-
         // 处理角度跨越 180 度的问题
         float currentYaw = IMU_GetYaw();
         float error = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw - currentYaw);
@@ -401,7 +381,7 @@ class RightAngleTurnState : public TrackStateBase
         ctx.SetCarStatus(30, angular_output);
 
         // 持续一段时间后退出
-        if (m_timer >= 500)
+        if (m_timer.Update(true, dt, 500))
         {
             return TRACK_STATE_TRACKING;
         }
@@ -415,7 +395,7 @@ class RightAngleTurnState : public TrackStateBase
 
   private:
     PIDController angle_pid = {};
-    uint32_t m_timer = 0;
+    TrackingUtils::TimeFilter m_timer;
 };
 
 // 避障状态 退出条件检测时间或者误差重新归0
@@ -652,6 +632,21 @@ static bool CheckSafety(uint32_t dt)
         hasEmergency = true;
     }
 
+    // 2. 翻车检测
+    float roll = IMU_GetRoll();
+    float pitch = IMU_GetPitch();
+    // 设定翻车阈值，例如 60 度
+    if (fabsf(roll) > 60.0f || fabsf(pitch) > 60.0f)
+    {
+        static uint32_t lastLog = 0;
+        if (HAL_GetTick() - lastLog > 1000)
+        {
+            LOG_INFO("Car Flipped!");
+            lastLog = HAL_GetTick();
+        }
+        OledServiceSetEmergency(OLED_EMERGENCY_ROLL_OVER, "CAR FLIPPED!");
+        hasEmergency = true;
+    }
     // 只有在没有检测到任何紧急情况时才清除紧急显示
     if (!hasEmergency)
     {
