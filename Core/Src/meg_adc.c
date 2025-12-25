@@ -26,7 +26,7 @@ static meg_adc_calibration adc_calibrations[5] = {
     {1.f / 0.859293, 0.0f},
     {1.f/0.4, 0.0f},
     {1.f / 0.817951, 0.0f}, //
-    {1.f / 0.918279, 0.0f}  //
+    {1.f / 0.95, 0.0f}  //
 };
 
 static float ADS1220_CodeToVoltage(long code)
@@ -100,31 +100,31 @@ static void MegAdcRegisterParams(void)
 {
     static ParamDesc meg_params[] = {
         /* 原始值，只读，可选只在串口或 OLED，这里两边都看 */
-        {.name = "M_l_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegLRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_lm_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegLMRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_m_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegMRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_rm_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRMRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
-        {.name = "M_r_raw",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMegRRaw,
-         .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        // {.name = "M_l_raw",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMegLRaw,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        // {.name = "M_lm_raw",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMegLMRaw,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        // {.name = "M_m_raw",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMegMRaw,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        // {.name = "M_rm_raw",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMegRMRaw,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+        // {.name = "M_r_raw",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMegRRaw,
+        //  .read_only = 1,
+        //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
 
         // /* 校准后值，只读 */
         {.name = "M_l_cal",

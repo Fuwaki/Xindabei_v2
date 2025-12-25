@@ -13,6 +13,7 @@ typedef enum {
     TRACK_STATE_PRE_RING,  // 预环岛状态
     TRACK_STATE_RING,      // 环岛中状态
     TRACK_STATE_EXIT_RING, // 出环岛状态
+    TRACK_STATE_RIGHT_ANGLE, // 直角弯状态
     TRACK_STATE_OBSTACLE_AVOIDANCE, // 避障状态
     TRACK_STATE_COUNT      // 状态数量，用于数组大小
 } TrackState;
