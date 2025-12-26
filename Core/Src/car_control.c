@@ -22,7 +22,7 @@ static LADRC_Handle_t angular_velocity_ladrc;
 static SCurve speed_scurve;
 
 // 前馈参数
-static const float Kf_omega = 0.1f;    // 角速度前馈 (原Kf)
+static const float Kf_omega = 0.12f;    // 角速度前馈 (原Kf)
 static const float Kf_alpha = 0.005f;  // 角加速度前馈 (新增)
 
 // 死区参数 (解决齿轮间隙震荡)

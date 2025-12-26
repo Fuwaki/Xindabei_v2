@@ -161,7 +161,7 @@ class TrackingState : public TrackStateBase
   public:
     // 循迹PID参数 (可在线调整)
     // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 85.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f}; // 40
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 120.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 115.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
 
     static constexpr float DT = 0.01f;
 
