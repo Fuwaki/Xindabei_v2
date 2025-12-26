@@ -354,9 +354,9 @@ void StartDefaultTask(void *argument)
             }
         }
 
-        OledServiceUpdate();
+        // OledServiceUpdate();
         print_handler();
-        osDelay(50); // 提高刷新率以响应按键
+        osDelay(10); // 提高刷新率以响应按键
     }
   /* USER CODE END StartDefaultTask */
 }

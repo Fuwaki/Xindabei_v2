@@ -48,6 +48,11 @@ static EncPLL motor2_pll;
 static float motor_1_speed_setpoint = 0.0; // 左电机
 static float motor_2_speed_setpoint = 0.0; // 右电机
 
+// 加速度前馈相关变量
+static float motor_1_speed_setpoint_prev = 0.0f; // 上一次目标速度
+static float motor_2_speed_setpoint_prev = 0.0f;
+static float motor_acc_ff_gain = 0.005f; // 加速度前馈增益
+
 static int32_t motor_1_current = 0;
 static int32_t motor_1_current_setpoint = 0;
 
@@ -107,6 +112,16 @@ float Motor_GetSpeed1(void)
 float Motor_GetSpeed2(void)
 {
     return motor2_pll.omega / 100.0f;
+}
+
+void Motor_SetAccFeedforwardGain(float gain)
+{
+    motor_acc_ff_gain = gain;
+}
+
+float Motor_GetAccFeedforwardGain(void)
+{
+    return motor_acc_ff_gain;
 }
 
 /* 参数服务器回调函数 */
@@ -187,19 +202,19 @@ void MotorInit()
     // f_max_hz: 动态/大误差时的观测带宽（越大越跟得快，但不能超过 1/(5*dt)）
     //           dt=0.005s -> 200Hz，建议 f_max < 20Hz，否则离散化不稳定
     // zeta    : 阻尼比（1.0~1.2 建议，无过冲且响应快）
-    EncPLL_Init(&motor1_pll, 2.0f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
-    EncPLL_Init(&motor2_pll, 2.0f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
+    EncPLL_Init(&motor1_pll, 1.2f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
+    EncPLL_Init(&motor2_pll, 1.2f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
 
     // ========== 速度环 PID (备用) ==========
 
     // 0.0085在50速度左右线性良好
-    PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.15f, 0.08f, 0.0f, 0.0085f, 0.005f);
+    PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.175f, 0.15f, 0.0001f, 0.0086f, 0.005f);
     PID_SetIntegralLimit(&motor1_speed_pid, -5.0, 5.0);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
 
-    PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 0.15f, 0.08f, 0.0f, 0.0085f, 0.005f);
+    PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 0.175f, 0.15f, 0.0001f, 0.0086f, 0.005f);
     PID_SetIntegralLimit(&motor2_speed_pid, -5.0, 5.0);
-    PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f);
+    PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f); 
 
     // ========== 速度环 LADRC ==========
     // 参数说明 (保守参数，从这里开始调):
@@ -246,16 +261,16 @@ void MotorInit()
          .ops.f.get = GetMotor2SpeedActual,
          .read_only = 1,
          .mask = PARAM_MASK_SERIAL},
-        {.name = "M1_Out",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMotor1SpeedOutput,
-         .read_only = 1,
-         .mask =  PARAM_MASK_SERIAL},
-        {.name = "M2_Out",
-         .type = PARAM_TYPE_FLOAT,
-         .ops.f.get = GetMotor2SpeedOutput,
-         .read_only = 1,
-         .mask =  PARAM_MASK_SERIAL},
+        // {.name = "M1_Out",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMotor1SpeedOutput,
+        //  .read_only = 1,
+        //  .mask =  PARAM_MASK_SERIAL},
+        // {.name = "M2_Out",
+        //  .type = PARAM_TYPE_FLOAT,
+        //  .ops.f.get = GetMotor2SpeedOutput,
+        //  .read_only = 1,
+        //  .mask =  PARAM_MASK_SERIAL},
     };
     for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
     {
@@ -336,6 +351,17 @@ void SpeedLoopHandler()
     float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 100.0f;
     float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 100.0f;
 
+    // ========== 加速度前馈计算 ==========
+    // 加速度前馈 = Kacc * d(setpoint)/dt
+    // 这里 dt = 0.005s (速度环周期)
+    // 注意: 电机1方向取反
+    float acc_ff_1 = motor_acc_ff_gain * (-motor_1_speed_setpoint - (-motor_1_speed_setpoint_prev)) / 0.005f;
+    float acc_ff_2 = motor_acc_ff_gain * (motor_2_speed_setpoint - motor_2_speed_setpoint_prev) / 0.005f;
+    
+    // 更新历史值
+    motor_1_speed_setpoint_prev = motor_1_speed_setpoint;
+    motor_2_speed_setpoint_prev = motor_2_speed_setpoint;
+
 #if USE_LADRC_SPEED_LOOP
     // ========== LADRC 速度环 ==========
     // 速度前馈系数 (参考 PID 参数 Kf=0.035)
@@ -349,6 +375,14 @@ void SpeedLoopHandler()
     float output_1 = PID_Update_Positional(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
     float output_2 = PID_Update_Positional(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
 #endif
+
+    // ========== 叠加加速度前馈 ==========
+    output_1 += acc_ff_1;
+    output_2 += acc_ff_2;
+    
+    // 限幅 (防止加速度前馈导致输出超限)
+    output_1 = output_1 > 1.0f ? 1.0f : (output_1 < -1.0f ? -1.0f : output_1);
+    output_2 = output_2 > 1.0f ? 1.0f : (output_2 < -1.0f ? -1.0f : output_2);
 
     motor_1_speed_output = output_1;
     motor_2_speed_output = output_2;

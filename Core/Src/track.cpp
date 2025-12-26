@@ -24,8 +24,8 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr float VEL_TRACKING = 57.0f;
-constexpr float OUT_OF_LINE_THRESHOLD = 0.007;
+constexpr float VEL_TRACKING = 80.0f;
+constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
 // 出线检测
 } // namespace Config
 
@@ -110,8 +110,8 @@ class TrackingUtils
         }
     };
 
-    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.2, float k1 = 1.0,
-                          float k2 = 0.24)
+    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.23, float k1 = 1.0,
+                          float k2 = 0.17)
     {
         auto res = MegAdcGetCalibratedResult();
         float denom = trackA * (res.l + res.r) + trackB * (res.lm + res.rm);
@@ -134,6 +134,10 @@ class TrackingUtils
 class StopState : public TrackStateBase
 {
   public:
+    StopState()
+    {
+        PID_Init(&this->pid,PID_MODE_POSITIONAL, 0.0,  0.0, 0.0, 0.0, 0.002);
+    }
     void Enter(TrackContext &ctx) override
     {
     }
@@ -144,6 +148,7 @@ class StopState : public TrackStateBase
         // float    // static uint32_t tick = 0;
         // tick++;
         // float a = 360.0f * sinf((float)tick * 0.02f);a = 360.0f * sinf((float)tick * 0.02f);
+        TrackingUtils::CalcTrack(ctx, this->pid);
 
         LED_Command(1, true);
         ctx.SetCarStatus(0, 0);
@@ -153,6 +158,10 @@ class StopState : public TrackStateBase
     {
         return "STOP";
     }
+
+  private:
+        PIDController pid = {};
+
 };
 
 // 循迹状态 (核心算法)
@@ -161,7 +170,9 @@ class TrackingState : public TrackStateBase
   public:
     // 循迹PID参数 (可在线调整)
     // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 85.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f}; // 40
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 115.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 137.358f, .ki = 0.0f, .kd = 0.00f, .Kf = 0.0f};  //67
+    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 148.0f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};          //72
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f}; // 80
 
     static constexpr float DT = 0.01f;
 
@@ -182,8 +193,8 @@ class TrackingState : public TrackStateBase
 
         TrackingUtils::CalcTrack(ctx, this->pid);
         float v = Config::VEL_TRACKING;
-        constexpr float A = 0.5;
-        // float v = Config::VEL_TRACKING/(1+A*ctx.trackErr);
+        // constexpr float A = 0.05;
+        // float v = Config::VEL_TRACKING/(1+fabsf(A*ctx.trackErr));
 
         ctx.SetCarStatus(v, ctx.trackOutput);
 
@@ -340,17 +351,19 @@ class RingState : public TrackStateBase
 class ExitRingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
-    static constexpr float DT = 0.02f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 8.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    static constexpr float DT = 0.01f;
 
     ExitRingState()
     {
         PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
-        PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
+        PID_SetOutputLimit(&this->angle_pid, -700.0f, 700.0f);
     }
 
     void Enter(TrackContext &ctx) override
     {
+        ctx.safetyCheckEnabled = false;
+
         LED_Command(4, true);
 
         m_timer.Reset();
@@ -366,9 +379,9 @@ class ExitRingState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(ctx.enterAngle - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(38, angular_output);
-        return m_timer.Update(true, dt, 250) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
-        // return TRACK_STATE_EXIT_RING;
+        ctx.SetCarStatus(0, angular_output);
+        // return m_timer.Update(true, dt, 250) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
+        return TRACK_STATE_EXIT_RING;
     }
 
     const char *Name() const override
@@ -566,7 +579,7 @@ extern "C"
         RegisterParameters();
 
         // 设置初始状态
-        s_fsm.ChangeState(TRACK_STATE_STOP);
+        s_fsm.ChangeState(TRACK_STATE_TRACKING);
     }
 
     void TrackHandler(void)

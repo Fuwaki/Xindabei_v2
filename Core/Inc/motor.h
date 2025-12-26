@@ -62,3 +62,7 @@ int32_t GetMotor2Current(void);
 // 获取电机速度 (单位: 与SetTargetMotorSpeed对应)
 float Motor_GetSpeed1(void);
 float Motor_GetSpeed2(void);
+
+// 设置加速度前馈增益 (用于在线调试)
+void Motor_SetAccFeedforwardGain(float gain);
+float Motor_GetAccFeedforwardGain(void);

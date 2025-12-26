@@ -232,9 +232,9 @@ void MX_TIM5_Init(void)
 
   /* USER CODE END TIM5_Init 1 */
   htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 8;
+  htim5.Init.Prescaler = 9;   // OVERCLOCK: 8 -> 9 to keep same frequency (96MHz/10 = 84MHz/9 ≈ same)
   htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 5000;
+  htim5.Init.Period = 5712;  // OVERCLOCK: 5000 -> 5712 to keep ~1.68kHz (96MHz/10/5713)
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
@@ -271,9 +271,9 @@ void MX_TIM9_Init(void)
 
   /* USER CODE END TIM9_Init 1 */
   htim9.Instance = TIM9;
-  htim9.Init.Prescaler = 8;
+  htim9.Init.Prescaler = 9;    // OVERCLOCK: 8 -> 9 to compensate for 96MHz clock
   htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 9550;
+  htim9.Init.Period = 9550;    // Keep same period, new freq = 96MHz/10/9551 ≈ 1005Hz (was 84MHz/9/9551 ≈ 976Hz)
   htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
