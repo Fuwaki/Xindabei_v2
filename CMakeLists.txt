@@ -48,6 +48,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # 用户添加: 电机与编码器处理逻辑
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/motor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/pid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ladrc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/uart_command.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ADS1220.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/tof.c

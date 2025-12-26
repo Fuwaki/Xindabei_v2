@@ -95,7 +95,7 @@ void ADS1220Config(void)
    	ADS1220WriteRegister(ADS1220_0_REGISTER, 0x01, &Temp);
 
 	/* 600 SPS Normal Mode provides ~1.7ms settling time per channel. */
-	Temp = ADS1220_DR_330 | ADS1220_MODE_TURBO;
+	Temp = ADS1220_DR_175 | ADS1220_MODE_TURBO;
    	ADS1220WriteRegister(ADS1220_1_REGISTER, 0x01, &Temp);	/* Register 2: VREF_INT (2.048V), IDAC_OFF */
 	Temp = ADS1220_VREF_INT | ADS1220_IDAC_OFF;
 	ADS1220WriteRegister(ADS1220_2_REGISTER, 0x01, &Temp);

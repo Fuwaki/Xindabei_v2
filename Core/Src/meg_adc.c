@@ -22,11 +22,11 @@ typedef struct
 } meg_adc_calibration;
 
 static meg_adc_calibration adc_calibrations[5] = {
-    {1.f /0.774808, 0.0f},
-    {1.f / 0.859293, 0.0f},
+    {1.f /0.783, 0.0f},
+    {1.f / 0.857, 0.0f},
     {1.f/0.4, 0.0f},
-    {1.f / 0.817951, 0.0f}, //
-    {1.f / 0.95, 0.0f}  //
+    {1.f / 0.826, 0.0f}, //
+    {1.f / 0.873, 0.0f}  //
 };
 
 static float ADS1220_CodeToVoltage(long code)
@@ -99,7 +99,7 @@ static float GetMegRMCal(void)
 static void MegAdcRegisterParams(void)
 {
     static ParamDesc meg_params[] = {
-        /* 原始值，只读，可选只在串口或 OLED，这里两边都看 */
+        // /* 原始值，只读，可选只在串口或 OLED，这里两边都看 */
         // {.name = "M_l_raw",
         //  .type = PARAM_TYPE_FLOAT,
         //  .ops.f.get = GetMegLRaw,
@@ -131,27 +131,27 @@ static void MegAdcRegisterParams(void)
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLCal,
          .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+         .mask =  PARAM_MASK_OLED},
         {.name = "M_lm_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLMCal,
          .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+         .mask =  PARAM_MASK_OLED},
         {.name = "M_m_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegMCal,
          .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+         .mask =  PARAM_MASK_OLED},
         {.name = "M_rm_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRMCal,
          .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+         .mask =  PARAM_MASK_OLED},
         {.name = "M_r_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegRCal,
          .read_only = 1,
-         .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
+         .mask =  PARAM_MASK_OLED},
     };
 
     for (int i = 0; i < (int)(sizeof(meg_params) / sizeof(meg_params[0])); ++i)

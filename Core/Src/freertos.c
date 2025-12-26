@@ -98,7 +98,7 @@ osThreadId_t AdcCaptureHandle;
 const osThreadAttr_t AdcCapture_attributes = {
   .name = "AdcCapture",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityHigh,
+  .priority = (osPriority_t) osPriorityRealtime,
 };
 /* Definitions for CarControlTask */
 osThreadId_t CarControlTaskHandle;

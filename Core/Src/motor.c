@@ -1,19 +1,20 @@
 #include "motor.h"
 #include "adc.h"
-#include "common.h"
 #include "log.h"
-#include "main.h"
 #include "param_server.h"
 #include "pid.h"
+#include "ladrc.h"
 #include "stm32f4xx_hal_adc_ex.h"
-#include "stm32f4xx_hal_gpio.h"
 #include "tim.h"
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 
 // 定义是否仅使用速度环 (1: 仅速度环, 0: 速度环+电流环)
 #define USE_SPEED_LOOP_ONLY 1
+
+// 定义速度环控制器类型 (0: PID, 1: LADRC)
+#define USE_LADRC_SPEED_LOOP 0
+
 
 // 前向声明
 void apply_signed_pwm_with_slow_decay(TIM_HandleTypeDef *htim, float value);
@@ -31,6 +32,10 @@ static uint8_t encoder2_inited = 0;
 // 速度pid
 static PIDController motor1_speed_pid;
 static PIDController motor2_speed_pid;
+
+// 速度LADRC
+static LADRC_Handle_t motor1_speed_ladrc;
+static LADRC_Handle_t motor2_speed_ladrc;
 
 // 电流pid
 static PIDController motor1_current_pid;
@@ -115,7 +120,7 @@ static float GetMotor2SpeedTarget(void)
 }
 static float GetMotor1SpeedActual(void)
 {
-    return motor1_pll.omega / 100.0;
+    return -motor1_pll.omega / 100.0;
 }
 static float GetMotor2SpeedActual(void)
 {
@@ -179,21 +184,39 @@ void MotorInit()
 
     // EncPLL 调参入口：
     // f_min_hz: 稳态/低速时的观测带宽（越小越平滑）
-    // f_max_hz: 动态/大误差时的观测带宽（越大越跟得快）
+    // f_max_hz: 动态/大误差时的观测带宽（越大越跟得快，但不能超过 1/(5*dt)）
+    //           dt=0.005s -> 200Hz，建议 f_max < 20Hz，否则离散化不稳定
     // zeta    : 阻尼比（1.0~1.2 建议，无过冲且响应快）
-    // error_min: 误差阈值下限 (counts)，小于此值认为噪声
-    // error_max: 误差阈值上限 (counts)，大于此值认为运动
-    // dt      : 采样周期（由速度环调用频率决定，这里是 0.01s 对应 100Hz）
-    EncPLL_Init(&motor1_pll, 0.5f, 20.0f, 1.25f, 0.7f, 2.7f, 0.005f);
-    EncPLL_Init(&motor2_pll, 0.5f, 20.0f, 1.25f, 0.7f, 2.7f, 0.005f);
+    EncPLL_Init(&motor1_pll, 2.0f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
+    EncPLL_Init(&motor2_pll, 2.0f, 21.0f, 1.20f, 0.7f, 5.0f, 0.005f);
 
-    PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.09f, 0.09f, 0.0f, 0.035f, 0.005f);
-    PID_SetIntegralLimit(&motor1_speed_pid, -6.0, 6.0);
+    // ========== 速度环 PID (备用) ==========
+
+    // 0.0085在50速度左右线性良好
+    PID_Init(&motor1_speed_pid, PID_MODE_POSITIONAL, 0.15f, 0.08f, 0.0f, 0.0085f, 0.005f);
+    PID_SetIntegralLimit(&motor1_speed_pid, -5.0, 5.0);
     PID_SetOutputLimit(&motor1_speed_pid, -1.f, 1.f);
 
-    PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 0.09f, 0.09f, 0.0f, 0.035f, 0.005f);
-    PID_SetIntegralLimit(&motor2_speed_pid, -6.0, 6.0);
+    PID_Init(&motor2_speed_pid, PID_MODE_POSITIONAL, 0.15f, 0.08f, 0.0f, 0.0085f, 0.005f);
+    PID_SetIntegralLimit(&motor2_speed_pid, -5.0, 5.0);
     PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f);
+
+    // ========== 速度环 LADRC ==========
+    // 参数说明 (保守参数，从这里开始调):
+    //   wc = 15 rad/s  : 控制器带宽，约 2.4Hz，响应时间约 70ms
+    //   wo = 50 rad/s  : 观测器带宽，wo ≈ 3*wc
+    //   b0 = 150       : 控制增益 ≈ 速度范围/PWM范围 = 100/0.7 ≈ 150
+    //   dt = 0.005s    : 采样周期 5ms (200Hz)
+    //   max_out = 1.0  : PWM占空比限幅 [-1, 1]
+    //
+    // 调参方向:
+    //   响应慢 -> 增大 wc (每次+5)
+    //   震荡  -> 减小 wc 或增大 b0
+    //   跟踪有偏差 -> 增大 wo
+
+
+    LADRC_Init(&motor1_speed_ladrc, 5.0f, 10.0f, 50.0f, 0.005f, 1.0f);
+    LADRC_Init(&motor2_speed_ladrc, 5.0f, 10.0f, 50.0f, 0.005f, 1.0f);
 
     PID_Init(&motor1_current_pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 1.f, 0.005f);
     PID_SetOutputLimit(&motor1_current_pid, -1.f, 1.0f);
@@ -207,37 +230,37 @@ void MotorInit()
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMotor1SpeedTarget,
          .read_only = 1,
-         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+         .mask = PARAM_MASK_SERIAL},
         {.name = "M2_Tgt",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMotor2SpeedTarget,
          .read_only = 1,
-         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+         .mask = PARAM_MASK_SERIAL},
         {.name = "M1_Spd",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMotor1SpeedActual,
          .read_only = 1,
-         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+         .mask = PARAM_MASK_SERIAL},
         {.name = "M2_Spd",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMotor2SpeedActual,
          .read_only = 1,
-         .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
-        // {.name = "M1_Out",
-        //  .type = PARAM_TYPE_FLOAT,
-        //  .ops.f.get = GetMotor1SpeedOutput,
-        //  .read_only = 1,
-        //  .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
-        // {.name = "M2_Out",
-        //  .type = PARAM_TYPE_FLOAT,
-        //  .ops.f.get = GetMotor2SpeedOutput,
-        //  .read_only = 1,
-        //  .mask = PARAM_MASK_OLED | PARAM_MASK_SERIAL},
+         .mask = PARAM_MASK_SERIAL},
+        {.name = "M1_Out",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor1SpeedOutput,
+         .read_only = 1,
+         .mask =  PARAM_MASK_SERIAL},
+        {.name = "M2_Out",
+         .type = PARAM_TYPE_FLOAT,
+         .ops.f.get = GetMotor2SpeedOutput,
+         .read_only = 1,
+         .mask =  PARAM_MASK_SERIAL},
     };
-    // for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
-    // {
-    //     ParamServer_Register(&motor_params[i]);
-    // }
+    for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
+    {
+        ParamServer_Register(&motor_params[i]);
+    }
 
     LOG_INFO("MotorInit done");
 }
@@ -309,34 +332,29 @@ void CurrentLoopTimerHandler()
 
 void SpeedLoopHandler()
 {
-    // static uint32_t tick = 0;
-    // tick++;
-    // motor_1_speed_setpoint=motor_2_speed_setpoint = 50.0f * sinf((float)tick * 0.05f);
-    // motor_1_speed_setpoint=motor_2_speed_setpoint=20.0;
-
+    // 获取速度反馈
     float speed_1 = EncPLL_Update(&motor1_pll, (uint32_t)Get_Encoder1_Count()) / 100.0f;
     float speed_2 = EncPLL_Update(&motor2_pll, (uint32_t)Get_Encoder2_Count()) / 100.0f;
 
+#if USE_LADRC_SPEED_LOOP
+    // ========== LADRC 速度环 ==========
+    // 速度前馈系数 (参考 PID 参数 Kf=0.035)
+    float Kf = 0.035f;
+
+    // 注意: 电机1方向取反
+    float output_1 = LADRC_Calc(&motor1_speed_ladrc, -motor_1_speed_setpoint, speed_1, -motor_1_speed_setpoint * Kf);
+    float output_2 = LADRC_Calc(&motor2_speed_ladrc, motor_2_speed_setpoint, speed_2, motor_2_speed_setpoint * Kf);
+#else
+    // ========== PID 速度环 ==========
     float output_1 = PID_Update_Positional(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
     float output_2 = PID_Update_Positional(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
+#endif
 
     motor_1_speed_output = output_1;
     motor_2_speed_output = output_2;
 
-    // float output_1 = 0.4;ate_Incremental(&motor1_speed_pid, -motor_1_speed_setpoint, speed_1);
-    // float output_2 = PID_Update_Incremental(&motor2_speed_pid, motor_2_speed_setpoint, speed_2);
-    // float output_1 = 0.4;
-    // float output_2=0.3;
-
-    // printf("" FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT "," FLOAT_FMT ","
-    // FLOAT_FMT "\n",
-    //        float_to_str(speed_1), float_to_str(speed_2), float_to_str(motor1_pll.debug_error),
-    //        float_to_str(motor2_pll.debug_error),float_to_str(output_1),float_to_str(output_2),
-    //        float_to_str(motor_1_speed_setpoint), float_to_str(motor_2_speed_setpoint)
-    //        );
-
 #if USE_SPEED_LOOP_ONLY
-    // 直接将速度环PID输出作为PWM占空比应用
+    // 直接将速度环输出作为PWM占空比应用
     apply_signed_pwm_with_fast_decay(&htim4, output_1);
     apply_signed_pwm_with_fast_decay(&htim2, output_2);
 #else
@@ -424,6 +442,11 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
     // 计算位置误差
     float error = local_now_theta - pll->theta;
 
+    // [保护] 误差限幅，防止单次巨大跳变导致发散
+    // 如果 error 极大，说明可能失锁，限制进入控制器的误差幅度
+    if (error > 10000.0f) error = 10000.0f;
+    if (error < -10000.0f) error = -10000.0f;
+
     // --- 自适应带宽观测器 (Adaptive Bandwidth Observer) ---
     // 严谨性说明：
     // 这是一个基于误差大小动态调整系统带宽的观测器，类似于 One Euro Filter 的思想，
@@ -470,8 +493,19 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
     // 1. 速度 omega 仅由积分项驱动
     pll->omega += current_ki * error * pll->dt;
 
+    // [保护] 速度限幅，防止数值爆炸 (假设最大转速不超过 200000 counts/s)
+    if (pll->omega > 500000.0f) pll->omega = 500000.0f;
+    if (pll->omega < -500000.0f) pll->omega = -500000.0f;
+
     // 2. 位置 theta 由 速度 omega 和 比例项 (kp * error) 共同驱动
     pll->theta += (pll->omega + current_kp * error) * pll->dt;
+
+    // [保护] NaN 检查与自愈
+    if (isnan(pll->omega) || isnan(pll->theta) || isinf(pll->omega) || isinf(pll->theta))
+    {
+        pll->omega = 0.0f;
+        pll->theta = local_now_theta; // 重置到当前测量值
+    }
 
     // 定期重置坐标系，保持浮点数在小范围内 (例如 +/- 20000)
     // 这样可以保证 float 的精度足以分辨 1 个 count 的变化

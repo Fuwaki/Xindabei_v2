@@ -24,7 +24,7 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr float VEL_TRACKING = 50.0f;
+constexpr float VEL_TRACKING = 57.0f;
 constexpr float OUT_OF_LINE_THRESHOLD = 0.007;
 // 出线检测
 } // namespace Config
@@ -110,22 +110,20 @@ class TrackingUtils
         }
     };
 
-    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.0, float k1 = 1.0,
-                          float k2 = 0.2)
+    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.2, float k1 = 1.0,
+                          float k2 = 0.24)
     {
         auto res = MegAdcGetCalibratedResult();
         float denom = trackA * (res.l + res.r) + trackB * (res.lm + res.rm);
 
         ctx.trackErr = std::isnan(denom) ? 0.0f : (trackA * (res.l - res.r) + trackB * (res.lm - res.rm)) / denom;
-
         // constexpr float A = 1.0f, B = 0.2f;
         // k2=std::clamp(fabsf(ctx.trackErr)-0.4,0.0,0.4)*2;
-
         ctx.trackErr = k1 * ctx.trackErr + k2 * pow(ctx.trackErr, 3.0); // 误差整形
 
-        // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
-        ctx.trackErr = Car_GetTargetVelocity() < 20.0 ? ctx.trackErr
-                                                      : ctx.trackErr * Config::VEL_TRACKING / Car_GetTargetVelocity();
+        // // err/speed 来达成不同速度下的自适应控制效果 只减小增益不扩大增益
+        // ctx.trackErr =
+        //     Car_GetTargetVelocity() < 30.0 ? ctx.trackErr / 2.5 : ctx.trackErr * 20.0 / Car_GetTargetVelocity();
 
         ctx.trackOutput = PID_Update_Positional(&pid, 0.0f, ctx.trackErr);
         // ctx.SetCarStatus(0.0, 0.0);
@@ -141,8 +139,14 @@ class StopState : public TrackStateBase
     }
     TrackState Update(TrackContext &ctx, uint32_t) override
     {
+        // static uint32_t tick = 0;
+        // tick++;
+        // float    // static uint32_t tick = 0;
+        // tick++;
+        // float a = 360.0f * sinf((float)tick * 0.02f);a = 360.0f * sinf((float)tick * 0.02f);
+
         LED_Command(1, true);
-        ctx.SetCarStatus(0, 0.0);
+        ctx.SetCarStatus(0, 0);
         return TRACK_STATE_STOP;
     }
     const char *Name() const override
@@ -155,16 +159,21 @@ class StopState : public TrackStateBase
 class TrackingState : public TrackStateBase
 {
   public:
+    // 循迹PID参数 (可在线调整)
+    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 85.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f}; // 40
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 120.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+
+    static constexpr float DT = 0.01f;
+
     TrackingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 26.00f, 0.0f, 0.7f, 0.0f, 0.01f); // good for v under 37
-        // PID_EnableTD(&this->pid, 600.0);
-        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
+
     void Enter(TrackContext &) override
     {
         LED_Command(3, true);
-
         m_timer = 0;
     }
 
@@ -172,7 +181,11 @@ class TrackingState : public TrackStateBase
     {
 
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
+        float v = Config::VEL_TRACKING;
+        constexpr float A = 0.5;
+        // float v = Config::VEL_TRACKING/(1+A*ctx.trackErr);
+
+        ctx.SetCarStatus(v, ctx.trackOutput);
 
         auto res = MegAdcGetCalibratedResult();
 
@@ -224,11 +237,15 @@ class TrackingState : public TrackStateBase
 class PreRingState : public TrackStateBase
 {
   public:
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 13.50f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};
+    static constexpr float DT = 0.02f;
+
     PreRingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.50f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
+
     void Enter(TrackContext &ctx) override
     {
         LED_Command(4, true);
@@ -257,11 +274,15 @@ class PreRingState : public TrackStateBase
 class RingState : public TrackStateBase
 {
   public:
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 13.00f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};
+    static constexpr float DT = 0.02f;
+
     RingState()
     {
-        PID_Init(&this->pid, PID_MODE_POSITIONAL, 13.00f, 0.0f, 0.1f, 0.0f, 0.02f); // good for v under 37
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
         PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
     }
+
     void Enter(TrackContext &ctx) override
     {
         LED_Command(2, true);
@@ -319,11 +340,15 @@ class RingState : public TrackStateBase
 class ExitRingState : public TrackStateBase
 {
   public:
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    static constexpr float DT = 0.02f;
+
     ExitRingState()
     {
-        PID_Init(&angle_pid, PID_MODE_POSITIONAL, 1.0f, 0.0f, 0.0f, 0.0f, 0.02f);
-        PID_SetOutputLimit(&angle_pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
     }
+
     void Enter(TrackContext &ctx) override
     {
         LED_Command(4, true);
@@ -361,11 +386,15 @@ class ExitRingState : public TrackStateBase
 class RightAngleTurnState : public TrackStateBase
 {
   public:
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    static constexpr float DT = 0.02f;
+
     RightAngleTurnState()
     {
-        PID_Init(&this->angle_pid, PID_MODE_POSITIONAL, 1.0f, 0.0f, 0.0f, 0.0f, 0.02f);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
         PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
     }
+
     void Enter(TrackContext &ctx) override
     {
         LED_Command(4, true);
@@ -403,11 +432,15 @@ class RightAngleTurnState : public TrackStateBase
 class ObstacleAvoidanceState : public TrackStateBase
 {
   public:
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.5f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
+    static constexpr float DT = 0.02f;
+
     ObstacleAvoidanceState()
     {
-        PID_Init(&angle_pid, PID_MODE_POSITIONAL, 1.5f, 0.0f, 0.0f, 0.0f, 0.02f);
-        PID_SetOutputLimit(&angle_pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
     }
+
     void Enter(TrackContext &ctx) override
     {
         // 关闭安全检测
@@ -615,6 +648,12 @@ static bool CheckSafety(uint32_t dt)
         return false;
     }
 
+    // 停止状态下不进行安全检测，避免误报
+    if (s_fsm.GetCurrentStateID() == TRACK_STATE_STOP)
+    {
+        return false;
+    }
+
     bool hasEmergency = false;
 
     // 1. 出线检测
@@ -623,7 +662,7 @@ static bool CheckSafety(uint32_t dt)
     if (sum < Config::OUT_OF_LINE_THRESHOLD)
     {
         static uint32_t lastLog = 0;
-        if (HAL_GetTick() - lastLog > 1000)
+        if (HAL_GetTick() - lastLog > 100)
         {
             LOG_INFO("Out of line!");
             lastLog = HAL_GetTick();

@@ -106,3 +106,45 @@ float PID_Update_Incremental(PIDController *pid, float setpoint, float measureme
   pid->prev_error = e;
   return clampf(out + pid->Kf * setpoint, pid->out_min, pid->out_max);
 }
+
+// ============================================================================
+// 在线参数调整接口实现
+// ============================================================================
+
+void PID_SetParams(PIDController *pid, const PIDParams *params) {
+  pid->kp = params->kp;
+  pid->ki = params->ki;
+  pid->kd = params->kd;
+  pid->Kf = params->Kf;
+  pid->enableD = (params->kd != 0.0f) ? 1 : 0;
+}
+
+PIDParams PID_GetParams(const PIDController *pid) {
+  PIDParams params;
+  params.kp = pid->kp;
+  params.ki = pid->ki;
+  params.kd = pid->kd;
+  params.Kf = pid->Kf;
+  return params;
+}
+
+void PID_SetKp(PIDController *pid, float kp) {
+  pid->kp = kp;
+}
+
+void PID_SetKi(PIDController *pid, float ki) {
+  pid->ki = ki;
+}
+
+void PID_SetKd(PIDController *pid, float kd) {
+  pid->kd = kd;
+  pid->enableD = (kd != 0.0f) ? 1 : 0;
+}
+
+void PID_SetKf(PIDController *pid, float Kf) {
+  pid->Kf = Kf;
+}
+
+void PID_InitWithParams(PIDController *pid, PIDMode mode, const PIDParams *params, float dt) {
+  PID_Init(pid, mode, params->kp, params->ki, params->kd, params->Kf, dt);
+}
