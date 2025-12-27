@@ -22,11 +22,11 @@ typedef struct
 } meg_adc_calibration;
 
 static meg_adc_calibration adc_calibrations[5] = {
-    {1.f /0.783, 0.0f},
-    {1.f / 0.857, 0.0f},
+    {1.f /0.7, 0.0f},
+    {1.f / 0.883, 0.0f},
     {1.f/0.4, 0.0f},
-    {1.f / 0.826, 0.0f}, //
-    {1.f / 0.873, 0.0f}  //
+    {1.f / 0.769, 0.0f}, //
+    {1.f / 0.862, 0.0f}  //
 };
 
 static float ADS1220_CodeToVoltage(long code)
@@ -126,7 +126,7 @@ static void MegAdcRegisterParams(void)
         //  .read_only = 1,
         //  .mask = PARAM_MASK_SERIAL | PARAM_MASK_OLED},
 
-        // /* 校准后值，只读 */
+        // // /* 校准后值，只读 */
         {.name = "M_l_cal",
          .type = PARAM_TYPE_FLOAT,
          .ops.f.get = GetMegLCal,

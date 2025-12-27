@@ -355,7 +355,7 @@ void StartDefaultTask(void *argument)
         }
 
         // OledServiceUpdate();
-        print_handler();
+        // print_handler();
         osDelay(10); // 提高刷新率以响应按键
     }
   /* USER CODE END StartDefaultTask */
@@ -504,7 +504,7 @@ void TrackTaskFunc(void *argument)
     /* Infinite loop */
     TrackInit();
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 20ms 周期
+    const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms 周期
     for (;;)
     {
         TrackHandler();

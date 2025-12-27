@@ -12,9 +12,14 @@
 #include <string.h>
 
 #define TOF_I2C_ADDRESS (0x52U)
-#define TOF_SIGNAL_MIN_Mcps (2.0f)
-#define TOF_SNR_MIN_RATIO (6.0f)
-#define TOF_SIGMA_MAX_MM (15.0f)
+
+// 长距离高可信度参数配置
+#define TOF_TIMING_BUDGET_US (33000U)    // 33ms 测量预算 (~30Hz)
+#define TOF_SIGNAL_MIN_Mcps (0.1f)       // 支持远距离弱反射
+#define TOF_SNR_MIN_RATIO (4.0f)         // 提高SNR要求确保可信度
+#define TOF_SIGMA_MAX_MM (25.0f)         // 硬件sigma限制值
+#define TOF_VCSEL_PERIOD_PRE_RANGE (18U) // 长距离预测周期
+#define TOF_VCSEL_PERIOD_FINAL_RANGE (14U) // 长距离最终周期
 
 static VL53L0X_Dev_t s_vl53l0x_dev = {0};
 static VL53L0X_RangingMeasurementData_t s_ranging_data = {0};
@@ -96,6 +101,19 @@ static bool tof_perform_initialization(void)
 		return false;
 	}
 
+	// 长距离模式: 设置 VCSEL 脉冲周期
+	status = VL53L0X_SetVcselPulsePeriod(&s_vl53l0x_dev, VL53L0X_VCSEL_PERIOD_PRE_RANGE, TOF_VCSEL_PERIOD_PRE_RANGE);
+	if (status != VL53L0X_ERROR_NONE) {
+		tof_log_error("SetVcselPulsePeriod(PreRange)", status);
+		return false;
+	}
+
+	status = VL53L0X_SetVcselPulsePeriod(&s_vl53l0x_dev, VL53L0X_VCSEL_PERIOD_FINAL_RANGE, TOF_VCSEL_PERIOD_FINAL_RANGE);
+	if (status != VL53L0X_ERROR_NONE) {
+		tof_log_error("SetVcselPulsePeriod(FinalRange)", status);
+		return false;
+	}
+
 	status = VL53L0X_SetLimitCheckValue(&s_vl53l0x_dev, VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
 																			(FixPoint1616_t)(TOF_SIGNAL_MIN_Mcps * 65536.0f));
 	if (status != VL53L0X_ERROR_NONE) {
@@ -110,7 +128,7 @@ static bool tof_perform_initialization(void)
 		return false;
 	}
 
-	status = VL53L0X_SetMeasurementTimingBudgetMicroSeconds(&s_vl53l0x_dev, 70000U);
+	status = VL53L0X_SetMeasurementTimingBudgetMicroSeconds(&s_vl53l0x_dev, TOF_TIMING_BUDGET_US);
 	if (status != VL53L0X_ERROR_NONE) {
 		tof_log_error("SetMeasurementTimingBudget", status);
 		return false;
@@ -179,16 +197,17 @@ void TofHandler(void)
 		float ambient = (float)s_ranging_data.AmbientRateRtnMegaCps / 65536.0f;
 		float snr = (ambient > 0.0001f) ? (signal / ambient) : signal;
 
-		if (s_ranging_data.RangeStatus == 0U &&
-				snr >= TOF_SNR_MIN_RATIO &&
-				signal >= TOF_SIGNAL_MIN_Mcps &&
-				s_ranging_data.EffectiveSpadRtnCount > 0U) {
-			s_distance_mm = (uint16_t)s_ranging_data.RangeMilliMeter;
-		} else {
-			s_distance_mm = 999;
-		}
+		// 严格的可信度校验
+		bool is_valid = (s_ranging_data.RangeStatus == 0U) &&
+		                (snr >= TOF_SNR_MIN_RATIO) &&
+		                (signal >= TOF_SIGNAL_MIN_Mcps) &&
+		                (s_ranging_data.EffectiveSpadRtnCount > 0U) &&
+		                (s_ranging_data.RangeMilliMeter < 2500U);
+
+		s_distance_mm = is_valid ? (uint16_t)s_ranging_data.RangeMilliMeter : 999U;
 	} else {
 		tof_log_error("GetRangingMeasurementData", status);
+		s_distance_mm = 999U;
 	}
 
 	status = VL53L0X_ClearInterruptMask(&s_vl53l0x_dev, 0);

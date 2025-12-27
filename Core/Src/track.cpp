@@ -44,6 +44,17 @@ struct TrackContext
     // 环岛变量
     float enterAngle = 0.0;
     float turnTargetYaw = 0.0;
+    
+    // 避障使能窗口 (直角弯后一段时间内才能触发避障)
+    uint32_t obstacleEnableTimer = 0; // 避障使能剩余时间 (ms)
+    static constexpr uint32_t OBSTACLE_ENABLE_WINDOW = 200; // 直角弯后200ms内允许避障
+    
+    // 避障计数器 (用于第二次避障后停车)
+    uint32_t obstacleCount = 0;
+    uint32_t stopAfterObstacleTimer = 0; // 第二次避障后延迟停车计时器 (ms)
+    bool stopAfterObstaclePending = false; // 是否等待延迟停车
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 2000; // 第二次避障后延迟停车时间 (ms)
+    
     // 命令缓冲
     bool hasCmd = false;
     TrackCommand pendingCmd = TRACK_CMD_STOP;
@@ -110,8 +121,8 @@ class TrackingUtils
         }
     };
 
-    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.23, float k1 = 1.0,
-                          float k2 = 0.17)
+    static void CalcTrack(TrackContext &ctx, PIDController &pid, float trackA = 1.0, float trackB = 1.23,
+                          float k1 = 1.0, float k2 = 0.17)
     {
         auto res = MegAdcGetCalibratedResult();
         float denom = trackA * (res.l + res.r) + trackB * (res.lm + res.rm);
@@ -136,7 +147,7 @@ class StopState : public TrackStateBase
   public:
     StopState()
     {
-        PID_Init(&this->pid,PID_MODE_POSITIONAL, 0.0,  0.0, 0.0, 0.0, 0.002);
+        PID_Init(&this->pid, PID_MODE_POSITIONAL, 0.0, 0.0, 0.0, 0.0, 0.002);
     }
     void Enter(TrackContext &ctx) override
     {
@@ -160,8 +171,7 @@ class StopState : public TrackStateBase
     }
 
   private:
-        PIDController pid = {};
-
+    PIDController pid = {};
 };
 
 // 循迹状态 (核心算法)
@@ -200,34 +210,63 @@ class TrackingState : public TrackStateBase
 
         auto res = MegAdcGetCalibratedResult();
 
-        // // 直角弯检测
-        // if (m_rightAngleFilter.Update(
-        //         fabsf(res.l - res.r) <= 0.3f && fabsf(res.lm - res.rm) >= 0.3f && (res.lm > 0.6 || res.rm > 0.6), 5))
+        // // 检查第二次避障后延迟停车
+        // if (ctx.stopAfterObstaclePending)
         // {
-        //     m_rightAngleFilter.Reset();
-        //     float currentYaw = IMU_GetYaw();
-        //     // 判断转向方向: lm > rm -> 左转, rm > lm -> 右转
-        //     if (res.lm < res.rm)
+        //     if (ctx.stopAfterObstacleTimer > dt)
         //     {
-        //         ctx.turnTargetYaw = currentYaw + 90.0f;
+        //         ctx.stopAfterObstacleTimer -= dt;
         //     }
         //     else
         //     {
-        //         ctx.turnTargetYaw = currentYaw - 90.0f;
+        //         ctx.stopAfterObstaclePending = false;
+        //         ctx.stopAfterObstacleTimer = 0;
+        //         LOG_INFO("Stop after second obstacle!");
+        //         return TRACK_STATE_STOP;
         //     }
-
-        //     // 归一化目标角度到 [-180, 180]
-        //     ctx.turnTargetYaw = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw);
-
-        //     return TRACK_STATE_RIGHT_ANGLE;
         // }
 
-        // // 3. 环岛检测
-        // if (m_ringFilter.Update(res.m >= 1.6 || m_ringFilter.count >= 5, 20))
-        // {
-        //     m_ringFilter.Reset();
-        //     return TRACK_STATE_PRE_RING;
-        // }
+        // 更新避障使能窗口计时器
+        if (ctx.obstacleEnableTimer > 0)
+        {
+            ctx.obstacleEnableTimer = (ctx.obstacleEnableTimer >= dt) ? (ctx.obstacleEnableTimer - dt) : 0;
+        }
+
+        // 避障检测 (仅在直角弯后指定时间窗口内有效)
+        if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(TofGetDistance() < 650, 5))
+        {
+            m_obstacleFilter.Reset();
+            return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        }
+
+        // 直角弯检测
+        if (m_rightAngleFilter.Update(
+                fabsf(res.l - res.r) <= 0.3f && fabsf(res.lm - res.rm) >= 0.3f && (res.lm > 0.6 || res.rm > 0.6), 5))
+        {
+            m_rightAngleFilter.Reset();
+            float currentYaw = IMU_GetYaw();
+            // 判断转向方向: lm > rm -> 左转, rm > lm -> 右转
+            if (res.lm < res.rm)
+            {
+                ctx.turnTargetYaw = currentYaw + 90.0f;
+            }
+            else
+            {
+                ctx.turnTargetYaw = currentYaw - 90.0f;
+            }
+
+            // 归一化目标角度到 [-180, 180]
+            ctx.turnTargetYaw = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw);
+
+            return TRACK_STATE_RIGHT_ANGLE;
+        }
+
+        // 环岛检测
+        if (m_ringFilter.Update(res.m >= 1.5 || m_ringFilter.count >= 5, 5))
+        {
+            m_ringFilter.Reset();
+            return TRACK_STATE_PRE_RING;
+        }
         return TRACK_STATE_TRACKING;
     }
 
@@ -240,6 +279,8 @@ class TrackingState : public TrackStateBase
     uint32_t m_timer = 0;
     PIDController pid = {};
     TrackingUtils::CountFilter m_ringFilter;
+    TrackingUtils::CountFilter m_obstacleFilter = {};
+
     TrackingUtils::CountFilter m_rightAngleFilter;
     constexpr static float OBSTACLE_DIST_THRESHOLD = 400;
 };
@@ -248,28 +289,29 @@ class TrackingState : public TrackStateBase
 class PreRingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 13.50f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};
-    static constexpr float DT = 0.02f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+    static constexpr float DT = 0.01f;
 
     PreRingState()
     {
         PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
-        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
+        PID_SetOutputLimit(&this->pid, -200.0f, 200.0f);
     }
 
     void Enter(TrackContext &ctx) override
     {
         LED_Command(4, true);
 
-        ctx.enterAngle = IMU_GetYaw() + 15;
+        ctx.enterAngle = IMU_GetYaw();
+        printf("Enter Ring at Angle: %s\n", float_to_str(ctx.enterAngle));
         m_timer.Reset();
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput + 14);
-        return m_timer.Update(true, dt, 250) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
+        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 160);
+        return m_timer.Update(true, dt, 500) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
     }
 
     const char *Name() const override
@@ -285,13 +327,12 @@ class PreRingState : public TrackStateBase
 class RingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 13.00f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};
-    static constexpr float DT = 0.02f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
 
     RingState()
     {
-        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
-        PID_SetOutputLimit(&this->pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, 0.01);
+        PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
 
     void Enter(TrackContext &ctx) override
@@ -304,7 +345,7 @@ class RingState : public TrackStateBase
 
         // 复用循迹状态的逻辑
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(38, ctx.trackOutput);
+        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
 
         // static int RingExitDetectCount = 0;
         // auto res = MegAdcGetResult();
@@ -326,11 +367,11 @@ class RingState : public TrackStateBase
 
         // 方法2: 角度判断
         float currentAngle = IMU_GetYaw();
-        float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - ctx.enterAngle));
-
+        float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - (ctx.enterAngle+20)));
+        printf("%s,%s\n", float_to_str(currentAngle),float_to_str(ctx.enterAngle));
         // 如果角度差小于阈值（例如 15 度），则认为已经转了一圈回到入口方向
         // 还需要加一个最小时间限制，防止刚进环岛就误判退出
-        if (m_timer.Update(true, dt, 500) && diff < 15.0f)
+        if (m_timer.Update(true, dt, 450) && diff < 40.0f)
         {
             return TRACK_STATE_EXIT_RING;
         }
@@ -351,12 +392,11 @@ class RingState : public TrackStateBase
 class ExitRingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 8.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
-    static constexpr float DT = 0.01f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 20.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
 
     ExitRingState()
     {
-        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, 0.01);
         PID_SetOutputLimit(&this->angle_pid, -700.0f, 700.0f);
     }
 
@@ -379,9 +419,13 @@ class ExitRingState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(ctx.enterAngle - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(0, angular_output);
-        // return m_timer.Update(true, dt, 250) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
-        return TRACK_STATE_EXIT_RING;
+        ctx.SetCarStatus(Config::VEL_TRACKING + 20, angular_output);
+        return m_timer.Update(true, dt, 900) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
+        // return TRACK_STATE_EXIT_RING;
+    }
+    void Exit(TrackContext &ctx) override
+    {
+        ctx.safetyCheckEnabled = true;
     }
 
     const char *Name() const override
@@ -399,18 +443,17 @@ class ExitRingState : public TrackStateBase
 class RightAngleTurnState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
-    static constexpr float DT = 0.02f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 20.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
 
     RightAngleTurnState()
     {
-        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
-        PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, 0.01);
+        PID_SetOutputLimit(&this->angle_pid, -500.0f, 500.0f);
     }
 
     void Enter(TrackContext &ctx) override
     {
-        LED_Command(4, true);
+        LED_Command(5, true);
         m_timer.Reset();
     }
 
@@ -421,7 +464,7 @@ class RightAngleTurnState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(30, angular_output);
+        ctx.SetCarStatus(Config::VEL_TRACKING, angular_output);
 
         // 持续一段时间后退出
         if (m_timer.Update(true, dt, 500))
@@ -429,6 +472,12 @@ class RightAngleTurnState : public TrackStateBase
             return TRACK_STATE_TRACKING;
         }
         return TRACK_STATE_RIGHT_ANGLE;
+    }
+
+    void Exit(TrackContext &ctx) override
+    {
+        // 直角弯完成后，开启避障检测窗口
+        ctx.obstacleEnableTimer = ctx.OBSTACLE_ENABLE_WINDOW;
     }
 
     const char *Name() const override
@@ -445,13 +494,12 @@ class RightAngleTurnState : public TrackStateBase
 class ObstacleAvoidanceState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 1.5f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
-    static constexpr float DT = 0.02f;
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 20.0f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f};
 
     ObstacleAvoidanceState()
     {
-        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
-        PID_SetOutputLimit(&this->angle_pid, -100.0f, 100.0f);
+        PID_InitWithParams(&this->angle_pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, 0.01);
+        PID_SetOutputLimit(&this->angle_pid, -300.0f, 300.0f);
     }
 
     void Enter(TrackContext &ctx) override
@@ -461,12 +509,25 @@ class ObstacleAvoidanceState : public TrackStateBase
         m_timer = 0;
         this->origin_angle = IMU_GetYaw();
         this->phase = PHASE_TURN_OUT;
+        LED_Command(6, true);
     }
 
     void Exit(TrackContext &ctx) override
     {
         // 恢复安全检测
         ctx.safetyCheckEnabled = true;
+        ctx.obstacleEnableTimer = 0;
+        
+        // 避障计数器递增
+        ctx.obstacleCount++;
+        
+        // // 第二次避障成功后，启动延迟停车计时器
+        // if (ctx.obstacleCount >= 2)
+        // {
+        //     ctx.stopAfterObstaclePending = true;
+        //     ctx.stopAfterObstacleTimer = ctx.STOP_AFTER_OBSTACLE_DELAY;
+        //     LOG_INFO("Second obstacle done, will stop after %lu ms", ctx.STOP_AFTER_OBSTACLE_DELAY);
+        // }
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
@@ -479,8 +540,8 @@ class ObstacleAvoidanceState : public TrackStateBase
         {
         case PHASE_TURN_OUT:
             // 第一阶段 向右转出
-            targetYaw = origin_angle + 50.0f;
-            if (m_timer >= 350) // 持续时间可调
+            targetYaw = origin_angle - 60.0f;
+            if (m_timer >= 400) // 持续时间可调
             {
                 phase = PHASE_PARALLEL;
                 m_timer = 0;
@@ -488,7 +549,7 @@ class ObstacleAvoidanceState : public TrackStateBase
             break;
 
         case PHASE_PARALLEL:
-            // 第二阶段 回正平行直行 (回到初始角度)
+            // 回正平行直行 (回到初始角度)
             targetYaw = origin_angle;
             if (m_timer >= 400) // 持续时间决定避障距离
             {
@@ -498,20 +559,23 @@ class ObstacleAvoidanceState : public TrackStateBase
             break;
 
         case PHASE_RETURN:
-            // 第三阶段：向左切回 (例如 45 度)
-            targetYaw = origin_angle - 45.0f;
+            // 向左切回 
+            targetYaw = origin_angle + 30.0f;
 
             // 检测是否回到线上
             {
                 auto res = MegAdcGetCalibratedResult();
                 // 简单的回线判断，可根据实际情况调整
-                if ((res.l + res.r) > 1.0f)
+                float sum = res.l + res.r + res.lm + res.rm;
+                printf("OA sum: %d\n", (int)(sum*1000));
+                if (sum > 0.2f)
                 {
+                    // return TRACK_STATE_STOP;
                     return TRACK_STATE_TRACKING;
                 }
             }
             // 超时强制停车
-            if (m_timer >= 1500)
+            if (m_timer >= 1000)
             {
                 return TRACK_STATE_STOP;
             }

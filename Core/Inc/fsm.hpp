@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <vector>
 #include <memory>
+#include "log.h"
 
 // ============================================================================
 // 通用状态机基础设施 (Generic FSM Infrastructure)
@@ -41,6 +42,12 @@ public:
         if (m_currentStateID == newStateID) return;
 
         size_t currentIndex = static_cast<size_t>(m_currentStateID);
+        const char* oldStateName = (currentIndex < m_states.size() && m_states[currentIndex]) 
+                                   ? m_states[currentIndex]->Name() : "UNKNOWN";
+        const char* newStateName = m_states[index]->Name();
+        
+        LOG_INFO("FSM: %s -> %s", oldStateName, newStateName);
+
         if (currentIndex < m_states.size() && m_states[currentIndex]) {
             m_states[currentIndex]->Exit(m_context);
         }
