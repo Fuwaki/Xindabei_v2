@@ -40,25 +40,25 @@ struct ConservativeParams {
     static constexpr uint32_t OA_PARALLEL_TIME = 550;   // 避障平行时间 (ms)
     static constexpr float OA_RETURN_ANGLE = 40.0f;     // 避障返回角度
     static constexpr uint32_t OA_TIMEOUT = 1300;        // 避障超时时间 (ms)
-    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 800; // 第二次避障后停车延迟 (ms)
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 740; // 第二次避障后停车延迟 (ms)
 };
 
 // 激进模式参数 (当前)
 struct AggressiveParams {
-    static constexpr float VEL_TRACKING = 108.0f;
-    static constexpr PIDParams TRACKING_PID = {.kp = 230.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
-    static constexpr float SPEED_ATTENUATION_A = 0.08f;  // 速度衰减系数
+    static constexpr float VEL_TRACKING = 104.0f;
+    static constexpr PIDParams TRACKING_PID = {.kp = 242.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
+    static constexpr float SPEED_ATTENUATION_A = 0.085f;  // 速度衰减系数
     static constexpr float PRE_RING_OFFSET = -220.0f;
     static constexpr float RING_VEL = 95.0f;
     static constexpr float RING_OFFSET = -100.0f;
-    static constexpr uint32_t RING_EXIT_TIME = 60;
+    static constexpr uint32_t RING_EXIT_TIME = 40;
     static constexpr PIDParams RING_PID = {.kp = 200.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
-    static constexpr float OA_TURN_ANGLE = 70.0f;       // 避障转出角度
+    static constexpr float OA_TURN_ANGLE = 85.0f;       // 避障转出角度
     static constexpr uint32_t OA_TURN_OUT_TIME = 400;   // 避障转出时间 (ms)
-    static constexpr uint32_t OA_PARALLEL_TIME = 500;   // 避障平行时间 (ms)
+    static constexpr uint32_t OA_PARALLEL_TIME = 400;   // 避障平行时间 (ms)
     static constexpr float OA_RETURN_ANGLE = 42.0f;     // 避障返回角度
     static constexpr uint32_t OA_TIMEOUT = 1300;        // 避障超时时间 (ms)
-    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 800; // 第二次避障后停车延迟 (ms)
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 700; // 第二次避障后停车延迟 (ms)
 };
 
 constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
@@ -148,7 +148,7 @@ struct TrackContext
 
     // 避障使能窗口 (直角弯后一段时间内才能触发避障)
     uint32_t obstacleEnableTimer = 0;                       // 避障使能剩余时间 (ms)
-    static constexpr uint32_t OBSTACLE_ENABLE_WINDOW = 200; // 直角弯后200ms内允许避障
+    static constexpr uint32_t OBSTACLE_ENABLE_WINDOW = 180; // 直角弯后200ms内允许避障
 
     // 避障计数器 (用于第二次避障后停车)
     uint32_t obstacleCount = 0;
@@ -343,7 +343,7 @@ class TrackingState : public TrackStateBase
 
         // 直角弯检测
         if (m_rightAngleFilter.Update(
-                fabsf(res.l - res.r) <= 0.4f && fabsf(res.lm - res.rm) >= 0.35f && (res.lm > 0.6 || res.rm > 0.6), 5))
+                fabsf(res.l - res.r) <= 0.4f && fabsf(res.lm - res.rm) >= 0.43f && (res.lm > 0.6 || res.rm > 0.6), 5))
         {
             m_rightAngleFilter.Reset();
             float currentYaw = IMU_GetYaw();
