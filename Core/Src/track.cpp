@@ -24,7 +24,7 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr float VEL_TRACKING = 80.0f;
+constexpr float VEL_TRACKING = 100.0f;
 constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
 // 出线检测
 } // namespace Config
@@ -182,7 +182,8 @@ class TrackingState : public TrackStateBase
     // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 85.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f}; // 40
     // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 137.358f, .ki = 0.0f, .kd = 0.00f, .Kf = 0.0f};  //67
     // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 148.0f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};          //72
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f}; // 80
+    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f}; // 80
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 225.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f}; // 95
 
     static constexpr float DT = 0.01f;
 
@@ -202,9 +203,9 @@ class TrackingState : public TrackStateBase
     {
 
         TrackingUtils::CalcTrack(ctx, this->pid);
-        float v = Config::VEL_TRACKING;
-        // constexpr float A = 0.05;
-        // float v = Config::VEL_TRACKING/(1+fabsf(A*ctx.trackErr));
+        // float v = Config::VEL_TRACKING;
+        constexpr float A = 0.1;
+        float v = Config::VEL_TRACKING/(1+fabsf(A*ctx.trackErr));
 
         ctx.SetCarStatus(v, ctx.trackOutput);
 
@@ -310,7 +311,7 @@ class PreRingState : public TrackStateBase
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 160);
+        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 220);
         return m_timer.Update(true, dt, 500) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
     }
 
@@ -327,7 +328,7 @@ class PreRingState : public TrackStateBase
 class RingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 200.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
 
     RingState()
     {
@@ -345,7 +346,7 @@ class RingState : public TrackStateBase
 
         // 复用循迹状态的逻辑
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput);
+        ctx.SetCarStatus(85, ctx.trackOutput);
 
         // static int RingExitDetectCount = 0;
         // auto res = MegAdcGetResult();
@@ -370,7 +371,7 @@ class RingState : public TrackStateBase
         float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - (ctx.enterAngle + 20)));
         printf("%s,%s\n", float_to_str(currentAngle), float_to_str(ctx.enterAngle));
         // 还需要加一个最小时间限制，防止刚进环岛就误判退出
-        if (m_timer1.Update(m_timer.Update(true, dt, 450) && diff < 50.0f,dt,50))
+        if (m_timer1.Update(m_timer.Update(true, dt, 450) && diff < 50.0f,dt,60))
         {
             return TRACK_STATE_EXIT_RING;
         }
