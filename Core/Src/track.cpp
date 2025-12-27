@@ -233,15 +233,15 @@ class TrackingState : public TrackStateBase
         }
 
         // 避障检测 (仅在直角弯后指定时间窗口内有效)
-        if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 5))
+        if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 7))
         {
-            m_obstacleFilter.Reset();
+            m_obstacleFilter.Reset();                                                                                                        
             return TRACK_STATE_OBSTACLE_AVOIDANCE;
         }
 
         // 直角弯检测
         if (m_rightAngleFilter.Update(
-                fabsf(res.l - res.r) <= 0.3f && fabsf(res.lm - res.rm) >= 0.3f && (res.lm > 0.6 || res.rm > 0.6), 5))
+                fabsf(res.l - res.r) <= 0.4f && fabsf(res.lm - res.rm) >= 0.35f && (res.lm > 0.6 || res.rm > 0.6), 5))
         {
             m_rightAngleFilter.Reset();
             float currentYaw = IMU_GetYaw();
@@ -369,9 +369,8 @@ class RingState : public TrackStateBase
         float currentAngle = IMU_GetYaw();
         float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - (ctx.enterAngle + 20)));
         printf("%s,%s\n", float_to_str(currentAngle), float_to_str(ctx.enterAngle));
-        // 如果角度差小于阈值（例如 15 度），则认为已经转了一圈回到入口方向
         // 还需要加一个最小时间限制，防止刚进环岛就误判退出
-        if (m_timer.Update(true, dt, 450) && diff < 40.0f)
+        if (m_timer1.Update(m_timer.Update(true, dt, 450) && diff < 50.0f,dt,50))
         {
             return TRACK_STATE_EXIT_RING;
         }
@@ -386,6 +385,8 @@ class RingState : public TrackStateBase
   private:
     PIDController pid = {};
     TrackingUtils::TimeFilter m_timer;
+    TrackingUtils::TimeFilter m_timer1;
+
 };
 
 // 出环岛状态 同预环岛 打角一段时间后退出
@@ -419,7 +420,7 @@ class ExitRingState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(ctx.enterAngle - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(Config::VEL_TRACKING + 40, angular_output);
+        ctx.SetCarStatus(Config::VEL_TRACKING + 25, angular_output);
         return m_timer.Update(true, dt, 900) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
         // return TRACK_STATE_EXIT_RING;
     }
@@ -541,8 +542,8 @@ class ObstacleAvoidanceState : public TrackStateBase
         {
         case PHASE_TURN_OUT:
             // 第一阶段 向右转出
-            targetYaw = origin_angle - 60.0f;
-            if (m_timer >= 400) // 持续时间可调
+            targetYaw = origin_angle - 67.0f;
+            if (m_timer >= 450) // 持续时间可调
             {
                 phase = PHASE_PARALLEL;
                 m_timer = 0;
