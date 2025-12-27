@@ -32,20 +32,33 @@ struct ConservativeParams {
     static constexpr float PRE_RING_OFFSET = -160.0f;
     static constexpr float RING_VEL = 80.0f;
     static constexpr float RING_OFFSET = 0.0f;
-    static constexpr uint32_t RING_EXIT_TIME = 50;
+    static constexpr uint32_t RING_EXIT_TIME = 60;
     static constexpr PIDParams RING_PID = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+    // 避障参数
+    static constexpr float OA_TURN_ANGLE = 67.0f;       // 避障转出角度
+    static constexpr uint32_t OA_TURN_OUT_TIME = 400;   // 避障转出时间 (ms)
+    static constexpr uint32_t OA_PARALLEL_TIME = 550;   // 避障平行时间 (ms)
+    static constexpr float OA_RETURN_ANGLE = 40.0f;     // 避障返回角度
+    static constexpr uint32_t OA_TIMEOUT = 1300;        // 避障超时时间 (ms)
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 800; // 第二次避障后停车延迟 (ms)
 };
 
 // 激进模式参数 (当前)
 struct AggressiveParams {
-    static constexpr float VEL_TRACKING = 100.0f;
-    static constexpr PIDParams TRACKING_PID = {.kp = 225.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
-    static constexpr float SPEED_ATTENUATION_A = 0.1f;  // 速度衰减系数
+    static constexpr float VEL_TRACKING = 108.0f;
+    static constexpr PIDParams TRACKING_PID = {.kp = 230.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
+    static constexpr float SPEED_ATTENUATION_A = 0.08f;  // 速度衰减系数
     static constexpr float PRE_RING_OFFSET = -220.0f;
     static constexpr float RING_VEL = 95.0f;
     static constexpr float RING_OFFSET = -100.0f;
     static constexpr uint32_t RING_EXIT_TIME = 60;
     static constexpr PIDParams RING_PID = {.kp = 200.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+    static constexpr float OA_TURN_ANGLE = 70.0f;       // 避障转出角度
+    static constexpr uint32_t OA_TURN_OUT_TIME = 400;   // 避障转出时间 (ms)
+    static constexpr uint32_t OA_PARALLEL_TIME = 500;   // 避障平行时间 (ms)
+    static constexpr float OA_RETURN_ANGLE = 42.0f;     // 避障返回角度
+    static constexpr uint32_t OA_TIMEOUT = 1300;        // 避障超时时间 (ms)
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 800; // 第二次避障后停车延迟 (ms)
 };
 
 constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
@@ -62,6 +75,13 @@ struct RuntimeParams {
     float ringOffset;
     uint32_t ringExitTime;
     PIDParams ringPid;
+    // 避障参数
+    float oaTurnAngle;
+    uint32_t oaTurnOutTime;
+    uint32_t oaParallelTime;
+    float oaReturnAngle;
+    uint32_t oaTimeout;
+    uint32_t stopAfterObstacleDelay;
 };
 
 // 全局运行时参数
@@ -82,6 +102,13 @@ static void SetRuntimeParams(TrackMode mode)
         g_params.ringOffset = Config::ConservativeParams::RING_OFFSET;
         g_params.ringExitTime = Config::ConservativeParams::RING_EXIT_TIME;
         g_params.ringPid = Config::ConservativeParams::RING_PID;
+        // 避障参数
+        g_params.oaTurnAngle = Config::ConservativeParams::OA_TURN_ANGLE;
+        g_params.oaTurnOutTime = Config::ConservativeParams::OA_TURN_OUT_TIME;
+        g_params.oaParallelTime = Config::ConservativeParams::OA_PARALLEL_TIME;
+        g_params.oaReturnAngle = Config::ConservativeParams::OA_RETURN_ANGLE;
+        g_params.oaTimeout = Config::ConservativeParams::OA_TIMEOUT;
+        g_params.stopAfterObstacleDelay = Config::ConservativeParams::STOP_AFTER_OBSTACLE_DELAY;
     }
     else
     {
@@ -93,6 +120,13 @@ static void SetRuntimeParams(TrackMode mode)
         g_params.ringOffset = Config::AggressiveParams::RING_OFFSET;
         g_params.ringExitTime = Config::AggressiveParams::RING_EXIT_TIME;
         g_params.ringPid = Config::AggressiveParams::RING_PID;
+        // 避障参数
+        g_params.oaTurnAngle = Config::AggressiveParams::OA_TURN_ANGLE;
+        g_params.oaTurnOutTime = Config::AggressiveParams::OA_TURN_OUT_TIME;
+        g_params.oaParallelTime = Config::AggressiveParams::OA_PARALLEL_TIME;
+        g_params.oaReturnAngle = Config::AggressiveParams::OA_RETURN_ANGLE;
+        g_params.oaTimeout = Config::AggressiveParams::OA_TIMEOUT;
+        g_params.stopAfterObstacleDelay = Config::AggressiveParams::STOP_AFTER_OBSTACLE_DELAY;
     }
 }
 
@@ -120,7 +154,6 @@ struct TrackContext
     uint32_t obstacleCount = 0;
     uint32_t stopAfterObstacleTimer = 0;                       // 第二次避障后延迟停车计时器 (ms)
     bool stopAfterObstaclePending = false;                     // 是否等待延迟停车
-    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 700; // 第二次避障后延迟停车时间 (ms)
 
     // 命令缓冲
     bool hasCmd = false;
@@ -579,8 +612,8 @@ class ObstacleAvoidanceState : public TrackStateBase
         if (ctx.obstacleCount >= 2)
         {
             ctx.stopAfterObstaclePending = true;
-            ctx.stopAfterObstacleTimer = ctx.STOP_AFTER_OBSTACLE_DELAY;
-            LOG_INFO("Second obstacle done, will stop after %lu ms", ctx.STOP_AFTER_OBSTACLE_DELAY);
+            ctx.stopAfterObstacleTimer = g_params.stopAfterObstacleDelay;
+            LOG_INFO("Second obstacle done, will stop after %lu ms", g_params.stopAfterObstacleDelay);
         }
     }
 
@@ -594,8 +627,8 @@ class ObstacleAvoidanceState : public TrackStateBase
         {
         case PHASE_TURN_OUT:
             // 第一阶段 向右转出
-            targetYaw = origin_angle - 67.0f;
-            if (m_timer >= 400) // 持续时间可调
+            targetYaw = origin_angle - g_params.oaTurnAngle;
+            if (m_timer >= g_params.oaTurnOutTime)
             {
                 phase = PHASE_PARALLEL;
                 m_timer = 0;
@@ -605,7 +638,7 @@ class ObstacleAvoidanceState : public TrackStateBase
         case PHASE_PARALLEL:
             // 回正平行直行 (回到初始角度)
             targetYaw = origin_angle;
-            if (m_timer >= 550) // 持续时间决定避障距离
+            if (m_timer >= g_params.oaParallelTime)
             {
                 phase = PHASE_RETURN;
                 m_timer = 0;
@@ -614,7 +647,7 @@ class ObstacleAvoidanceState : public TrackStateBase
 
         case PHASE_RETURN:
             // 向左切回
-            targetYaw = origin_angle + 40.0f;
+            targetYaw = origin_angle + g_params.oaReturnAngle;
 
             // 检测是否回到线上
             {
@@ -629,7 +662,7 @@ class ObstacleAvoidanceState : public TrackStateBase
                 }
             }
             // 超时强制停车
-            if (m_timer >= 1300)
+            if (m_timer >= g_params.oaTimeout)
             {
                 return TRACK_STATE_STOP;
             }
