@@ -278,7 +278,7 @@ void StartDefaultTask(void *argument)
         
         HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
 
-        /* KEY1: Next / Page Down */
+        /* KEY1: Next / Page Down, Long Press: Reset State Machine */
         if (HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) == GPIO_PIN_RESET)
         {
             osDelay(20); // Debounce
@@ -292,8 +292,9 @@ void StartDefaultTask(void *argument)
                     osDelay(10);
                     pressTime += 10;
                     if (pressTime > 1000 && !longPressHandled)
-                    { // 1s long press
-                        OledServiceToggleDisplay();
+                    { // 1s long press - Reset State Machine
+                        printf("KEY1 Long Press: Reset\n");
+                        TrackSetCommand(TRACK_CMD_RESET);
                         longPressHandled = true;
                     }
                 }
@@ -305,20 +306,20 @@ void StartDefaultTask(void *argument)
             }
         }
 
-        /* KEY2: Start Car */
+        /* KEY2: Start Car (Aggressive Mode - High Speed) */
         if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
         {
             osDelay(20); // Debounce
             if (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
             {
-                printf("KEY2 Pressed: Start\n");
+                printf("KEY2 Pressed: Start (Aggressive)\n");
                 TrackSetCommand(TRACK_CMD_START);
                 while (HAL_GPIO_ReadPin(KEY2_GPIO_Port, KEY2_Pin) == GPIO_PIN_RESET)
                     osDelay(10);
             }
         }
 
-        /* KEY3: Reset State Machine / Toggle Safety Check */
+        /* KEY3: Start Car (Conservative Mode - Low Speed) / Long Press: Toggle Safety Check */
         if (HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_RESET)
         {
             osDelay(20); // Debounce
@@ -342,8 +343,9 @@ void StartDefaultTask(void *argument)
 
                 if (!longPressHandled)
                 {
-                    // Short press - reset state machine
-                    TrackSetCommand(TRACK_CMD_RESET);
+                    // Short press - start with conservative mode
+                    printf("KEY3 Pressed: Start (Conservative)\n");
+                    TrackSetCommand(TRACK_CMD_START_CONSERVATIVE);
                 }        // // 3. 环岛检测
         // if (m_ringFilter.Update(res.m >= 1.6 || m_ringFilter.count >= 5, 20))
         // {
@@ -355,8 +357,8 @@ void StartDefaultTask(void *argument)
         }
 
         // OledServiceUpdate();
-        // print_handler();
-        osDelay(10); // 提高刷新率以响应按键
+        print_handler();
+        osDelay(50); // 提高刷新率以响应按键
     }
   /* USER CODE END StartDefaultTask */
 }

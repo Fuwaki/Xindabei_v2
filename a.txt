@@ -1,0 +1,52 @@
+diff --git a/Core/Src/freertos.c b/Core/Src/freertos.c
+index 8b0ce60..66f93d2 100644
+--- a/Core/Src/freertos.c
++++ b/Core/Src/freertos.c
+@@ -354,9 +354,9 @@ void StartDefaultTask(void *argument)
+             }
+         }
+ 
+-        // OledServiceUpdate();
++        OledServiceUpdate();
+         // print_handler();
+-        osDelay(10); // 提高刷新率以响应按键
++        osDelay(50); // 提高刷新率以响应按键
+     }
+   /* USER CODE END StartDefaultTask */
+ }
+diff --git a/Core/Src/track.cpp b/Core/Src/track.cpp
+index 3e806ae..643cde2 100644
+--- a/Core/Src/track.cpp
++++ b/Core/Src/track.cpp
+@@ -346,27 +346,10 @@ class RingState : public TrackStateBase
+ 
+         // 复用循迹状态的逻辑
+         TrackingUtils::CalcTrack(ctx, this->pid);
+-        ctx.SetCarStatus(85, ctx.trackOutput);
+-
+-        // static int RingExitDetectCount = 0;
+-        // auto res = MegAdcGetResult();
+-        // if (res.m >= 2.0)
+-        // {
+-        //     RingExitDetectCount++;
+-        // }
+-        // else
+-        // {
+-        //     RingExitDetectCount -= 2;
+-        //     if (RingExitDetectCount < 0)
+-        //         RingExitDetectCount = 0;
+-        // }
+-        // if (RingExitDetectCount >= 10)
+-        // {
+-        //     RingExitDetectCount = 0;
+-        //     return TRACK_STATE_EXIT_RING;
+-        // }
+-
+-        // 方法2: 角度判断
++        ctx.SetCarStatus(95, ctx.trackOutput-100);          // 左转 所以增稳
++
++
++        // 角度判断
+         float currentAngle = IMU_GetYaw();
+         float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - (ctx.enterAngle + 20)));
+         printf("%s,%s\n", float_to_str(currentAngle), float_to_str(ctx.enterAngle));

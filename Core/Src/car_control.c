@@ -74,10 +74,10 @@ void CarControlInit()
         //  .read_only = 1,
         //  .mask = PARAM_MASK_SERIAL},
     };
-    for (int i = 0; i < sizeof(car_params) / sizeof(car_params[0]); i++)
-    {
-        ParamServer_Register(&car_params[i]);
-    }
+    // for (int i = 0; i < sizeof(car_params) / sizeof(car_params[0]); i++)
+    // {
+    //     ParamServer_Register(&car_params[i]);
+    // }
     
     LOG_INFO("CarControlInit done");
 }

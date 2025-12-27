@@ -24,10 +24,77 @@ extern "C"
 // ============================================================================
 namespace Config
 {
-constexpr float VEL_TRACKING = 100.0f;
+// 保守模式参数 (提速前)
+struct ConservativeParams {
+    static constexpr float VEL_TRACKING = 80.0f;
+    static constexpr PIDParams TRACKING_PID = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+    static constexpr float SPEED_ATTENUATION_A = 0.0f;  // 不使用速度衰减
+    static constexpr float PRE_RING_OFFSET = -160.0f;
+    static constexpr float RING_VEL = 80.0f;
+    static constexpr float RING_OFFSET = 0.0f;
+    static constexpr uint32_t RING_EXIT_TIME = 50;
+    static constexpr PIDParams RING_PID = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+};
+
+// 激进模式参数 (当前)
+struct AggressiveParams {
+    static constexpr float VEL_TRACKING = 100.0f;
+    static constexpr PIDParams TRACKING_PID = {.kp = 225.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
+    static constexpr float SPEED_ATTENUATION_A = 0.1f;  // 速度衰减系数
+    static constexpr float PRE_RING_OFFSET = -220.0f;
+    static constexpr float RING_VEL = 95.0f;
+    static constexpr float RING_OFFSET = -100.0f;
+    static constexpr uint32_t RING_EXIT_TIME = 60;
+    static constexpr PIDParams RING_PID = {.kp = 200.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
+};
+
 constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
 // 出线检测
 } // namespace Config
+
+// 运行时参数结构体
+struct RuntimeParams {
+    float velTracking;
+    PIDParams trackingPid;
+    float speedAttenuationA;
+    float preRingOffset;
+    float ringVel;
+    float ringOffset;
+    uint32_t ringExitTime;
+    PIDParams ringPid;
+};
+
+// 全局运行时参数
+static RuntimeParams g_params = {};
+static TrackMode g_currentMode = TRACK_MODE_AGGRESSIVE;
+
+// 根据模式设置运行时参数
+static void SetRuntimeParams(TrackMode mode)
+{
+    g_currentMode = mode;
+    if (mode == TRACK_MODE_CONSERVATIVE)
+    {
+        g_params.velTracking = Config::ConservativeParams::VEL_TRACKING;
+        g_params.trackingPid = Config::ConservativeParams::TRACKING_PID;
+        g_params.speedAttenuationA = Config::ConservativeParams::SPEED_ATTENUATION_A;
+        g_params.preRingOffset = Config::ConservativeParams::PRE_RING_OFFSET;
+        g_params.ringVel = Config::ConservativeParams::RING_VEL;
+        g_params.ringOffset = Config::ConservativeParams::RING_OFFSET;
+        g_params.ringExitTime = Config::ConservativeParams::RING_EXIT_TIME;
+        g_params.ringPid = Config::ConservativeParams::RING_PID;
+    }
+    else
+    {
+        g_params.velTracking = Config::AggressiveParams::VEL_TRACKING;
+        g_params.trackingPid = Config::AggressiveParams::TRACKING_PID;
+        g_params.speedAttenuationA = Config::AggressiveParams::SPEED_ATTENUATION_A;
+        g_params.preRingOffset = Config::AggressiveParams::PRE_RING_OFFSET;
+        g_params.ringVel = Config::AggressiveParams::RING_VEL;
+        g_params.ringOffset = Config::AggressiveParams::RING_OFFSET;
+        g_params.ringExitTime = Config::AggressiveParams::RING_EXIT_TIME;
+        g_params.ringPid = Config::AggressiveParams::RING_PID;
+    }
+}
 
 // ============================================================================
 // 循迹上下文 (业务数据)
@@ -53,7 +120,7 @@ struct TrackContext
     uint32_t obstacleCount = 0;
     uint32_t stopAfterObstacleTimer = 0;                       // 第二次避障后延迟停车计时器 (ms)
     bool stopAfterObstaclePending = false;                     // 是否等待延迟停车
-    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 800; // 第二次避障后延迟停车时间 (ms)
+    static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 700; // 第二次避障后延迟停车时间 (ms)
 
     // 命令缓冲
     bool hasCmd = false;
@@ -178,18 +245,12 @@ class StopState : public TrackStateBase
 class TrackingState : public TrackStateBase
 {
   public:
-    // 循迹PID参数 (可在线调整)
-    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 85.358f, .ki = 0.0f, .kd = 0.0f, .Kf = 0.0f}; // 40
-    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 137.358f, .ki = 0.0f, .kd = 0.00f, .Kf = 0.0f};  //67
-    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 148.0f, .ki = 0.0f, .kd = 0.1f, .Kf = 0.0f};          //72
-    // static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f}; // 80
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 225.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f}; // 95
-
     static constexpr float DT = 0.01f;
 
     TrackingState()
     {
-        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        // 初始化时使用默认参数，进入状态时会根据模式重新设置
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &Config::AggressiveParams::TRACKING_PID, DT);
         PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
 
@@ -197,15 +258,22 @@ class TrackingState : public TrackStateBase
     {
         LED_Command(3, true);
         m_timer = 0;
+        // 根据当前模式重新初始化PID
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &g_params.trackingPid, DT);
+        PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
 
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
 
         TrackingUtils::CalcTrack(ctx, this->pid);
-        // float v = Config::VEL_TRACKING;
-        constexpr float A = 0.1;
-        float v = Config::VEL_TRACKING/(1+fabsf(A*ctx.trackErr));
+        
+        // 根据运行时参数计算速度
+        float v = g_params.velTracking;
+        if (g_params.speedAttenuationA > 0.0f)
+        {
+            v = g_params.velTracking / (1 + fabsf(g_params.speedAttenuationA * ctx.trackErr));
+        }
 
         ctx.SetCarStatus(v, ctx.trackOutput);
 
@@ -290,12 +358,11 @@ class TrackingState : public TrackStateBase
 class PreRingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
     static constexpr float DT = 0.01f;
 
     PreRingState()
     {
-        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, DT);
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &Config::AggressiveParams::TRACKING_PID, DT);
         PID_SetOutputLimit(&this->pid, -200.0f, 200.0f);
     }
 
@@ -311,7 +378,7 @@ class PreRingState : public TrackStateBase
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 220);
+        ctx.SetCarStatus(g_params.velTracking, ctx.trackOutput + g_params.preRingOffset);
         return m_timer.Update(true, dt, 500) ? TRACK_STATE_RING : TRACK_STATE_PRE_RING;
     }
 
@@ -328,11 +395,9 @@ class PreRingState : public TrackStateBase
 class RingState : public TrackStateBase
 {
   public:
-    static constexpr PIDParams DEFAULT_PARAMS = {.kp = 200.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
-
     RingState()
     {
-        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &DEFAULT_PARAMS, 0.01);
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &Config::AggressiveParams::RING_PID, 0.01);
         PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
 
@@ -340,38 +405,24 @@ class RingState : public TrackStateBase
     {
         LED_Command(2, true);
         m_timer.Reset();
+        // 根据当前模式重新初始化PID
+        PID_InitWithParams(&this->pid, PID_MODE_POSITIONAL, &g_params.ringPid, 0.01);
+        PID_SetOutputLimit(&this->pid, -400.0f, 400.0f);
     }
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
 
         // 复用循迹状态的逻辑
         TrackingUtils::CalcTrack(ctx, this->pid);
-        ctx.SetCarStatus(85, ctx.trackOutput);
+        ctx.SetCarStatus(g_params.ringVel, ctx.trackOutput + g_params.ringOffset);  // 使用运行时参数
 
-        // static int RingExitDetectCount = 0;
-        // auto res = MegAdcGetResult();
-        // if (res.m >= 2.0)
-        // {
-        //     RingExitDetectCount++;
-        // }
-        // else
-        // {
-        //     RingExitDetectCount -= 2;
-        //     if (RingExitDetectCount < 0)
-        //         RingExitDetectCount = 0;
-        // }
-        // if (RingExitDetectCount >= 10)
-        // {
-        //     RingExitDetectCount = 0;
-        //     return TRACK_STATE_EXIT_RING;
-        // }
 
-        // 方法2: 角度判断
+        // 角度判断
         float currentAngle = IMU_GetYaw();
         float diff = fabsf(TrackingUtils::NormalizeAngle(currentAngle - (ctx.enterAngle + 20)));
         printf("%s,%s\n", float_to_str(currentAngle), float_to_str(ctx.enterAngle));
         // 还需要加一个最小时间限制，防止刚进环岛就误判退出
-        if (m_timer1.Update(m_timer.Update(true, dt, 450) && diff < 50.0f,dt,60))
+        if (m_timer1.Update(m_timer.Update(true, dt, 450) && diff < 50.0f, dt, g_params.ringExitTime))
         {
             return TRACK_STATE_EXIT_RING;
         }
@@ -414,14 +465,14 @@ class ExitRingState : public TrackStateBase
     TrackState Update(TrackContext &ctx, uint32_t dt) override
     {
         // TrackingUtils::CalcTrack(ctx, this->pid);
-        // ctx.SetCarStatus(Config::VEL_TRACKING, ctx.trackOutput - 20);
+        // ctx.SetCarStatus(g_params.velTracking, ctx.trackOutput - 20);
 
         // 处理角度跨越 180 度的问题
         float currentYaw = IMU_GetYaw();
         float error = TrackingUtils::NormalizeAngle(ctx.enterAngle - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(Config::VEL_TRACKING + 25, angular_output);
+        ctx.SetCarStatus(g_params.velTracking + 15, angular_output);
         return m_timer.Update(true, dt, 900) ? TRACK_STATE_TRACKING : TRACK_STATE_EXIT_RING;
         // return TRACK_STATE_EXIT_RING;
     }
@@ -466,7 +517,7 @@ class RightAngleTurnState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(ctx.turnTargetYaw - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(Config::VEL_TRACKING, angular_output);
+        ctx.SetCarStatus(g_params.velTracking, angular_output);
 
         // 持续一段时间后退出
         if (m_timer.Update(true, dt, 500))
@@ -544,7 +595,7 @@ class ObstacleAvoidanceState : public TrackStateBase
         case PHASE_TURN_OUT:
             // 第一阶段 向右转出
             targetYaw = origin_angle - 67.0f;
-            if (m_timer >= 450) // 持续时间可调
+            if (m_timer >= 400) // 持续时间可调
             {
                 phase = PHASE_PARALLEL;
                 m_timer = 0;
@@ -554,7 +605,7 @@ class ObstacleAvoidanceState : public TrackStateBase
         case PHASE_PARALLEL:
             // 回正平行直行 (回到初始角度)
             targetYaw = origin_angle;
-            if (m_timer >= 400) // 持续时间决定避障距离
+            if (m_timer >= 550) // 持续时间决定避障距离
             {
                 phase = PHASE_RETURN;
                 m_timer = 0;
@@ -563,22 +614,22 @@ class ObstacleAvoidanceState : public TrackStateBase
 
         case PHASE_RETURN:
             // 向左切回
-            targetYaw = origin_angle + 30.0f;
+            targetYaw = origin_angle + 40.0f;
 
             // 检测是否回到线上
             {
                 auto res = MegAdcGetCalibratedResult();
                 // 简单的回线判断，可根据实际情况调整
                 float sum = res.l + res.r + res.lm + res.rm;
-                printf("OA sum: %d\n", (int)(sum * 1000));
-                if (sum > 0.2f)
+                printf("OA sum: %s\n", float_to_str(sum ));
+                if (sum > 0.1f)
                 {
                     // return TRACK_STATE_STOP;
                     return TRACK_STATE_TRACKING;
                 }
             }
             // 超时强制停车
-            if (m_timer >= 1000)
+            if (m_timer >= 1300)
             {
                 return TRACK_STATE_STOP;
             }
@@ -589,7 +640,7 @@ class ObstacleAvoidanceState : public TrackStateBase
         float error = TrackingUtils::NormalizeAngle(targetYaw - currentYaw);
 
         float angular_output = PID_Update_Positional(&angle_pid, error, 0.0f);
-        ctx.SetCarStatus(Config::VEL_TRACKING, angular_output);
+        ctx.SetCarStatus(g_params.velTracking, angular_output);
 
         return TRACK_STATE_OBSTACLE_AVOIDANCE;
     }
@@ -633,6 +684,9 @@ extern "C"
 
     void TrackInit(void)
     {
+        // 初始化运行时参数（默认激进模式）
+        SetRuntimeParams(TRACK_MODE_AGGRESSIVE);
+
         // 注册所有状态
         s_fsm.RegisterState(TRACK_STATE_STOP, std::make_unique<StopState>());
         s_fsm.RegisterState(TRACK_STATE_TRACKING, std::make_unique<TrackingState>());
@@ -646,7 +700,7 @@ extern "C"
         RegisterParameters();
 
         // 设置初始状态
-        s_fsm.ChangeState(TRACK_STATE_TRACKING);
+        s_fsm.ChangeState(TRACK_STATE_STOP);
     }
 
     void TrackHandler(void)
@@ -706,9 +760,18 @@ static void HandleCommand()
     case TRACK_CMD_START:
         if (s_fsm.GetCurrentStateID() == TRACK_STATE_STOP)
         {
-            LOG_INFO("Start Tracking");
+            LOG_INFO("Start Tracking (Aggressive Mode)");
+            SetRuntimeParams(TRACK_MODE_AGGRESSIVE);
             ctx.obstacleCount = 0; // 清空避障计数器
-
+            s_fsm.ChangeState(TRACK_STATE_TRACKING);
+        }
+        break;
+    case TRACK_CMD_START_CONSERVATIVE:
+        if (s_fsm.GetCurrentStateID() == TRACK_STATE_STOP)
+        {
+            LOG_INFO("Start Tracking (Conservative Mode)");
+            SetRuntimeParams(TRACK_MODE_CONSERVATIVE);
+            ctx.obstacleCount = 0; // 清空避障计数器
             s_fsm.ChangeState(TRACK_STATE_TRACKING);
         }
         break;
@@ -818,10 +881,22 @@ static void RegisterParameters()
          0,
          1,
          PARAM_MASK_SERIAL},
+        {"Mode",
+         PARAM_TYPE_ENUM,
+         {.e = {nullptr, nullptr, []() -> const char * { return g_currentMode == TRACK_MODE_CONSERVATIVE ? "CONS" : "AGGR"; }}},
+         0,
+         1,
+         PARAM_MASK_OLED},
     };
 
-    for (auto &p : params)
-    {
-        ParamServer_Register(&p);
-    }
+    // for (auto &p : params)
+    // {
+    //     ParamServer_Register(&p);
+    // }
+}
+
+// 获取当前运行模式
+TrackMode TrackGetCurrentMode(void)
+{
+    return g_currentMode;
 }

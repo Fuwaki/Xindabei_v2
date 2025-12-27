@@ -18,9 +18,16 @@ typedef enum {
     TRACK_STATE_COUNT      // 状态数量，用于数组大小
 } TrackState;
 
+// 发车模式枚举
+typedef enum {
+    TRACK_MODE_CONSERVATIVE, // 保守模式 (低速，原提速前参数)
+    TRACK_MODE_AGGRESSIVE    // 激进模式 (高速，当前参数)
+} TrackMode;
+
 // 状态机外部控制接口
 typedef enum {
-    TRACK_CMD_START,        // 开始循迹
+    TRACK_CMD_START,        // 开始循迹 (默认激进模式)
+    TRACK_CMD_START_CONSERVATIVE, // 保守模式启动
     TRACK_CMD_STOP,         // 停止
     TRACK_CMD_RESET         // 重置状态机
 } TrackCommand;
@@ -43,6 +50,9 @@ const char* TrackGetStateName(TrackState state);
 // 安全检测开关功能
 void TrackSetSafetyCheckEnabled(bool enabled);
 bool TrackIsSafetyCheckEnabled(void);
+
+// 获取/设置当前运行模式
+TrackMode TrackGetCurrentMode(void);
 
 #ifdef __cplusplus
 }

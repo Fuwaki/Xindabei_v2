@@ -272,10 +272,10 @@ void MotorInit()
         //  .read_only = 1,
         //  .mask =  PARAM_MASK_SERIAL},
     };
-    for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
-    {
-        ParamServer_Register(&motor_params[i]);
-    }
+    // for (int i = 0; i < sizeof(motor_params) / sizeof(motor_params[0]); i++)
+    // {
+    //     ParamServer_Register(&motor_params[i]);
+    // }
 
     LOG_INFO("MotorInit done");
 }
