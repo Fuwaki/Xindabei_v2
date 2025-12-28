@@ -45,8 +45,8 @@ struct ConservativeParams {
 
 // 激进模式参数 (当前)
 struct AggressiveParams {
-    static constexpr float VEL_TRACKING = 104.0f;
-    static constexpr PIDParams TRACKING_PID = {.kp = 242.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
+    static constexpr float VEL_TRACKING = 108.0f;
+    static constexpr PIDParams TRACKING_PID = {.kp = 245.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
     static constexpr float SPEED_ATTENUATION_A = 0.085f;  // 速度衰减系数
     static constexpr float PRE_RING_OFFSET = -220.0f;
     static constexpr float RING_VEL = 95.0f;
@@ -312,21 +312,21 @@ class TrackingState : public TrackStateBase
 
         auto res = MegAdcGetCalibratedResult();
 
-        // 检查第二次避障后延迟停车
-        if (ctx.stopAfterObstaclePending)
-        {
-            if (ctx.stopAfterObstacleTimer > dt)
-            {
-                ctx.stopAfterObstacleTimer -= dt;
-            }
-            else
-            {
-                ctx.stopAfterObstaclePending = false;
-                ctx.stopAfterObstacleTimer = 0;
-                LOG_INFO("Stop after second obstacle!");
-                return TRACK_STATE_STOP;
-            }
-        }
+        // // 检查第二次避障后延迟停车
+        // if (ctx.stopAfterObstaclePending)
+        // {
+        //     if (ctx.stopAfterObstacleTimer > dt)
+        //     {
+        //         ctx.stopAfterObstacleTimer -= dt;
+        //     }
+        //     else
+        //     {
+        //         ctx.stopAfterObstaclePending = false;
+        //         ctx.stopAfterObstacleTimer = 0;
+        //         LOG_INFO("Stop after second obstacle!");
+        //         return TRACK_STATE_STOP;
+        //     }
+        // }
 
         // 更新避障使能窗口计时器
         if (ctx.obstacleEnableTimer > 0)
@@ -334,12 +334,12 @@ class TrackingState : public TrackStateBase
             ctx.obstacleEnableTimer = (ctx.obstacleEnableTimer >= dt) ? (ctx.obstacleEnableTimer - dt) : 0;
         }
 
-        // 避障检测 (仅在直角弯后指定时间窗口内有效)
-        if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 7))
-        {
-            m_obstacleFilter.Reset();                                                                                                        
-            return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        }
+        // // 避障检测 (仅在直角弯后指定时间窗口内有效)
+        // if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 7))
+        // {
+        //     m_obstacleFilter.Reset();                                                                                                        
+        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        // }
 
         // 直角弯检测
         if (m_rightAngleFilter.Update(
@@ -363,12 +363,12 @@ class TrackingState : public TrackStateBase
             return TRACK_STATE_RIGHT_ANGLE;
         }
 
-        // 环岛检测
-        if (m_ringFilter.Update(res.m >= 1.5 || m_ringFilter.count >= 5, 5))
-        {
-            m_ringFilter.Reset();
-            return TRACK_STATE_PRE_RING;
-        }
+        // // 环岛检测
+        // if (m_ringFilter.Update(res.m >= 1.5 || m_ringFilter.count >= 5, 5))
+        // {
+        //     m_ringFilter.Reset();
+        //     return TRACK_STATE_PRE_RING;
+        // }
         return TRACK_STATE_TRACKING;
     }
 
