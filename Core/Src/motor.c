@@ -217,17 +217,12 @@ void MotorInit()
     PID_SetOutputLimit(&motor2_speed_pid, -1.f, 1.f); 
 
     // ========== 速度环 LADRC ==========
-    // 参数说明 (保守参数，从这里开始调):
-    //   wc = 15 rad/s  : 控制器带宽，约 2.4Hz，响应时间约 70ms
-    //   wo = 50 rad/s  : 观测器带宽，wo ≈ 3*wc
-    //   b0 = 150       : 控制增益 ≈ 速度范围/PWM范围 = 100/0.7 ≈ 150
-    //   dt = 0.005s    : 采样周期 5ms (200Hz)
+    // 参数说明:
+    //   wc 控制器带宽
+    //   wo 观测器带宽
+    //   b0 控制增益 ≈ 速度范围/PWM范围
+    //   dt 采样周期
     //   max_out = 1.0  : PWM占空比限幅 [-1, 1]
-    //
-    // 调参方向:
-    //   响应慢 -> 增大 wc (每次+5)
-    //   震荡  -> 减小 wc 或增大 b0
-    //   跟踪有偏差 -> 增大 wo
 
 
     LADRC_Init(&motor1_speed_ladrc, 5.0f, 10.0f, 50.0f, 0.005f, 1.0f);
@@ -407,9 +402,7 @@ static inline int32_t DiffUpdate(uint16_t raw, uint16_t *last_raw, uint8_t *init
         return *extended;
     }
 
-    // 优化：利用 int16_t 的强制转换自动处理 16 位溢出
-    // 只要两次采样间的变化量在 -32768 到 32767 之间，这种写法就是数学上等价的
-    // 且没有 if-else 分支，效率更高
+    // 利用 int16_t 的强制转换自动处理 16 位溢出
     int16_t diff = (int16_t)(raw - *last_raw);
 
     *extended += diff;
@@ -476,16 +469,12 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
     // 计算位置误差
     float error = local_now_theta - pll->theta;
 
-    // [保护] 误差限幅，防止单次巨大跳变导致发散
+    // 误差限幅，防止单次巨大跳变导致发散
     // 如果 error 极大，说明可能失锁，限制进入控制器的误差幅度
     if (error > 10000.0f) error = 10000.0f;
     if (error < -10000.0f) error = -10000.0f;
 
-    // --- 自适应带宽观测器 (Adaptive Bandwidth Observer) ---
-    // 严谨性说明：
-    // 这是一个基于误差大小动态调整系统带宽的观测器，类似于 One Euro Filter 的思想，
-    // 但基于 Luenberger 观测器的极点配置理论。
-    //
+    // 自适应带宽观测器
     // 核心策略：保持阻尼比(zeta)恒定，根据误差动态调整自然频率(omega_n)。
     // 1. 阻尼比 zeta = 1.2 (恒定)：保证系统始终处于过阻尼状态，无论带宽如何，都不会发生震荡和过冲。
     // 2. 自然频率 omega_n (动态)：
@@ -524,14 +513,14 @@ float EncPLL_Update(EncPLL *pll, int32_t now_theta)
     float current_ki = omega_n * omega_n;
     float current_kp = pll->opt_two_zeta * omega_n;
 
-    // 1. 速度 omega 仅由积分项驱动
+    // 速度 omega 仅由积分项驱动
     pll->omega += current_ki * error * pll->dt;
 
     // [保护] 速度限幅，防止数值爆炸 (假设最大转速不超过 200000 counts/s)
     if (pll->omega > 500000.0f) pll->omega = 500000.0f;
     if (pll->omega < -500000.0f) pll->omega = -500000.0f;
 
-    // 2. 位置 theta 由 速度 omega 和 比例项 (kp * error) 共同驱动
+    // 位置 theta 由 速度 omega 和 比例项 (kp * error) 共同驱动
     pll->theta += (pll->omega + current_kp * error) * pll->dt;
 
     // [保护] NaN 检查与自愈

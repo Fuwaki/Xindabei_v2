@@ -19,12 +19,10 @@ extern "C"
 #include "tof.h"
 }
 
-// ============================================================================
-// 业务配置
-// ============================================================================
+// 参数配置
 namespace Config
 {
-// 保守模式参数 (提速前)
+// 保守模式参数
 struct ConservativeParams {
     static constexpr float VEL_TRACKING = 80.0f;
     static constexpr PIDParams TRACKING_PID = {.kp = 190.0f, .ki = 0.0f, .kd = 0.13f, .Kf = 0.0f};
@@ -43,7 +41,7 @@ struct ConservativeParams {
     static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 740; // 第二次避障后停车延迟 (ms)
 };
 
-// 激进模式参数 (当前)
+// 激进模式
 struct AggressiveParams {
     static constexpr float VEL_TRACKING = 108.0f;
     static constexpr PIDParams TRACKING_PID = {.kp = 245.0f, .ki = 0.0f, .kd = 0.15f, .Kf = 0.0f};
@@ -60,10 +58,9 @@ struct AggressiveParams {
     static constexpr uint32_t OA_TIMEOUT = 1300;        // 避障超时时间 (ms)
     static constexpr uint32_t STOP_AFTER_OBSTACLE_DELAY = 700; // 第二次避障后停车延迟 (ms)
 };
-
 constexpr float OUT_OF_LINE_THRESHOLD = 0.006;
-// 出线检测
-} // namespace Config
+
+} 
 
 // 运行时参数结构体
 struct RuntimeParams {
@@ -130,9 +127,8 @@ static void SetRuntimeParams(TrackMode mode)
     }
 }
 
-// ============================================================================
 // 循迹上下文 (业务数据)
-// ============================================================================
+
 struct TrackContext
 {
     float trackErr = 0.0f;
@@ -312,21 +308,21 @@ class TrackingState : public TrackStateBase
 
         auto res = MegAdcGetCalibratedResult();
 
-        // // 检查第二次避障后延迟停车
-        // if (ctx.stopAfterObstaclePending)
-        // {
-        //     if (ctx.stopAfterObstacleTimer > dt)
-        //     {
-        //         ctx.stopAfterObstacleTimer -= dt;
-        //     }
-        //     else
-        //     {
-        //         ctx.stopAfterObstaclePending = false;
-        //         ctx.stopAfterObstacleTimer = 0;
-        //         LOG_INFO("Stop after second obstacle!");
-        //         return TRACK_STATE_STOP;
-        //     }
-        // }
+        // 检查第二次避障后延迟停车
+        if (ctx.stopAfterObstaclePending)
+        {
+            if (ctx.stopAfterObstacleTimer > dt)
+            {
+                ctx.stopAfterObstacleTimer -= dt;
+            }
+            else
+            {
+                ctx.stopAfterObstaclePending = false;
+                ctx.stopAfterObstacleTimer = 0;
+                LOG_INFO("Stop after second obstacle!");
+                return TRACK_STATE_STOP;
+            }
+        }
 
         // 更新避障使能窗口计时器
         if (ctx.obstacleEnableTimer > 0)
@@ -334,12 +330,12 @@ class TrackingState : public TrackStateBase
             ctx.obstacleEnableTimer = (ctx.obstacleEnableTimer >= dt) ? (ctx.obstacleEnableTimer - dt) : 0;
         }
 
-        // // 避障检测 (仅在直角弯后指定时间窗口内有效)
-        // if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 7))
-        // {
-        //     m_obstacleFilter.Reset();                                                                                                        
-        //     return TRACK_STATE_OBSTACLE_AVOIDANCE;
-        // }
+        // 避障检测 (仅在直角弯后指定时间窗口内有效)
+        if (ctx.obstacleEnableTimer > 0 && m_obstacleFilter.Update(true, 7))
+        {
+            m_obstacleFilter.Reset();                                                                                                        
+            return TRACK_STATE_OBSTACLE_AVOIDANCE;
+        }
 
         // 直角弯检测
         if (m_rightAngleFilter.Update(
@@ -363,12 +359,12 @@ class TrackingState : public TrackStateBase
             return TRACK_STATE_RIGHT_ANGLE;
         }
 
-        // // 环岛检测
-        // if (m_ringFilter.Update(res.m >= 1.5 || m_ringFilter.count >= 5, 5))
-        // {
-        //     m_ringFilter.Reset();
-        //     return TRACK_STATE_PRE_RING;
-        // }
+        // 环岛检测
+        if (m_ringFilter.Update(res.m >= 1.5 || m_ringFilter.count >= 5, 5))
+        {
+            m_ringFilter.Reset();
+            return TRACK_STATE_PRE_RING;
+        }
         return TRACK_STATE_TRACKING;
     }
 
@@ -500,7 +496,6 @@ class ExitRingState : public TrackStateBase
         // TrackingUtils::CalcTrack(ctx, this->pid);
         // ctx.SetCarStatus(g_params.velTracking, ctx.trackOutput - 20);
 
-        // 处理角度跨越 180 度的问题
         float currentYaw = IMU_GetYaw();
         float error = TrackingUtils::NormalizeAngle(ctx.enterAngle - currentYaw);
 
@@ -697,21 +692,15 @@ class ObstacleAvoidanceState : public TrackStateBase
     PIDController angle_pid = {};
 };
 
-// ============================================================================
 // 状态机实例
-// ============================================================================
 static TrackStateMachine s_fsm;
 
-// ============================================================================
 // 内部辅助函数声明
-// ============================================================================
 static void HandleCommand();
 static bool CheckSafety(uint32_t dt);
 static void RegisterParameters();
 
-// ============================================================================
 // C 接口实现
-// ============================================================================
 extern "C"
 {
 
@@ -776,9 +765,7 @@ extern "C"
 
 } // extern "C"
 
-// ============================================================================
-// 内部辅助函数实现
-// ============================================================================
+
 static void HandleCommand()
 {
     auto &ctx = s_fsm.GetContext();
@@ -834,7 +821,7 @@ static bool CheckSafety(uint32_t dt)
 
     bool hasEmergency = false;
 
-    // 1. 出线检测
+    // 出线检测
     auto adc = MegAdcGetCalibratedResult();
     float sum = adc.l + adc.r + adc.lm + adc.rm;
     if (sum < Config::OUT_OF_LINE_THRESHOLD)
@@ -850,10 +837,10 @@ static bool CheckSafety(uint32_t dt)
         hasEmergency = true;
     }
 
-    // 2. 翻车检测
+    // 翻车检测
     float roll = IMU_GetRoll();
     float pitch = IMU_GetPitch();
-    // 设定翻车阈值，例如 60 度
+    // 设定翻车阈值
     if (fabsf(roll) > 60.0f || fabsf(pitch) > 60.0f)
     {
         static uint32_t lastLog = 0;

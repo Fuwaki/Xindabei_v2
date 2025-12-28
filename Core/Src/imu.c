@@ -6,12 +6,12 @@
 #include "madgwickFilter.h"
 #include <string.h>
 
-// SPI 通信缓冲区 (避免VLA，使用固定大小缓冲区)
+// SPI 通信缓冲区
 #define IMU_SPI_BUF_SIZE 16
 static uint8_t spi_tx_buf[IMU_SPI_BUF_SIZE];
 static uint8_t spi_rx_buf[IMU_SPI_BUF_SIZE];
 
-// LSM6DS3 SPI接口实现 - 优化版本
+// LSM6DS3 SPI接口实现
 static int32_t lsm6ds3_spi_write(void *handle, uint8_t reg, const uint8_t *data, uint16_t len)
 {
     if (len + 1 > IMU_SPI_BUF_SIZE) return HAL_ERROR;
@@ -40,13 +40,10 @@ static int32_t lsm6ds3_spi_read(void *handle, uint8_t reg, uint8_t *data, uint16
     spi_tx_buf[0] = reg | 0x80; // 设置读命令，最高位为1
     memset(&spi_tx_buf[1], 0xFF, len); // 填充字节
     
-    // 拉低CS片选
     HAL_GPIO_WritePin(ICM_CS_GPIO_Port, ICM_CS_Pin, GPIO_PIN_RESET);
-    
-    // 全双工收发 - 比分开Transmit和Receive更高效
+
     HAL_SPI_TransmitReceive(&hspi1, spi_tx_buf, spi_rx_buf, len + 1, HAL_MAX_DELAY);
     
-    // 释放CS片选
     HAL_GPIO_WritePin(ICM_CS_GPIO_Port, ICM_CS_Pin, GPIO_PIN_SET);
     
     // 跳过第一个字节（发送地址时的接收）
@@ -79,15 +76,13 @@ static float cached_yaw = 0.0f;
 static uint8_t euler_cache_valid = 0;
 
 // 陀螺仪零漂 (手动标定值)
-// 请在静止状态下观察输出，填入以下偏移量
 static float gyro_bias[3] = {0.0f, 0.0f, 0.0f};
 
 // IMU初始化状态标志
 static uint8_t imu_initialized = 0;
 
-// 竞速车需要高响应，使用二阶巴特沃斯滤波器
-// 原一阶低通 (alpha=0.8) 等效截止频率约 73Hz
-// 二阶巴特沃斯滤波器系数 (fc=85Hz @ fs=208Hz)，带宽略高于原设计
+// 二阶巴特沃斯滤波器
+// 滤波器系数 (fc=85Hz @ fs=208Hz)
 #define BUTTER_B0  0.664692258f
 #define BUTTER_B1  1.329384515f
 #define BUTTER_B2  0.664692258f
@@ -269,7 +264,6 @@ void IMUInit()
     // 标记IMU初始化成功
     imu_initialized = 1;
     
-    /* 注册IMU参数到服务器：陀螺仪和加速度计数据都通过串口输出 */
     static ParamDesc imu_params[] = {
         // 陀螺仪参数
         { .name = "GYRO_YAW", .type = PARAM_TYPE_FLOAT, .ops.f.get = GetGyroYaw, .read_only = 1, .mask = PARAM_MASK_SERIAL|PARAM_MASK_OLED },
@@ -461,8 +455,6 @@ void IMUHandler()
     float accel_magnitude = sqrtf(ax*ax + ay*ay + az*az);
     
     // 加速度计有效性检查：模长必须大于阈值
-    // 无论动态大小，都调用融合算法
-    // Madgwick 算法会自动归一化加速度，大动态时加速度计方向偏差会被 BETA 参数抑制
     if (accel_magnitude > 0.1f)
     {
         imu_filter(ax, ay, az, gx, gy, gz);
