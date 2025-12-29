@@ -4,7 +4,7 @@
 [![Platform: STM32F4](https://img.shields.io/badge/Platform-STM32F4-blue.svg)](https://www.st.com/en/microcontrollers-microprocessors/stm32f4-series.html)
 [![Framework: FreeRTOS](https://img.shields.io/badge/Framework-FreeRTOS-green.svg)](https://www.freertos.org/)
 
-本项目是一个基于 STM32F401 的电磁循迹智能车软件部分，集成了先进的控制算法（LADRC、S-Curve、PID）、复杂的场景状态机以及完善的参数调试系统，适用于双T电感排布和差速两轮（或四轮鼠车）。为2025湖南科技大学信达杯电磁组参赛作品，
+本项目是一个基于 STM32F401 的电磁循迹智能车软件部分，集成了先进的控制算法（LADRC、S-Curve、PID）、复杂的场景状态机以及完善的参数调试系统，适用于双T电感排布和差速两轮（或四轮鼠车）。为2025湖南科技大学信达杯电磁组参赛作品的软件部分，硬件和车模请参考[这个仓库](https://github.com/Zdyi1/Xindabei_PCB)
 
 ## 核心特性
 
